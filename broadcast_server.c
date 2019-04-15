@@ -6,6 +6,8 @@
 #include <string.h>     /* for memset() */
 #include <unistd.h>     /* for close() */
 #include <ctype.h>
+#include <time.h>
+
 /*
 	Supported Command:
 	1. ADD <filename>
@@ -59,7 +61,7 @@ int main(int argc, char *argv[])
     char *sendString = (char*)malloc(1024*sizeof(char));                 /* String to broadcast */
     int broadcastPermission;          /* Socket opt to set permission to broadcast */
     unsigned int sendStringLen;       /* Length of string to broadcast */
-	int number = 0;
+	time_t t = time(0);
 
     if (argc < 3)                     /* Test for correct number of parameters */
     {
@@ -92,16 +94,28 @@ int main(int argc, char *argv[])
     while(1) /* Run forever */
     {
     	/*take input command*/
+    	here:
     	printf("Type in a valid command (add/rm <filename>) \n");
 		fgets(sendString, 1024, stdin);
-		sendStringLen = strlen(sendString);  /* Find length of sendString */
-		char* toSend = (char*)malloc(1024*sizeof(char));
-		strcpy(toSend, sendString);
-		toSend[strlen(toSend) - 1] = 0;
+		char* command = (char*)malloc(1024*sizeof(char));
+		strcpy(command, sendString);
+		command[strlen(command) - 1] = 0;
 		char** cmdArray = checkStr(sendString);
-		if(strcmp(toLowerCase(cmdArray[0]), "add") == 0 || strcmp(toLowerCase(cmdArray[0]), "rm") == 0){
+		if((strcmp(toLowerCase(cmdArray[0]), "add") == 0 && cmdArray[1] != NULL && cmdArray[1] != "\n")|| 
+			(strcmp(toLowerCase(cmdArray[0]), "rm") == 0 && cmdArray[1] != NULL && cmdArray[1] != "\n")){
          /* Broadcast sendString in datagram to clients every 3 seconds*/
 			/*i the command is "add", retrieve the content and write to file*/
+			char* msgToSend = (char*)calloc(1024, sizeof(char));
+			char* timeStamp = (char*)calloc(1024, sizeof(char));
+			/*
+				The message to be sent will have the following format
+				<command> <filename> <timestamp> (<content>)
+			*/
+			sprintf(timeStamp, "%s", ctime(&t));
+			strcat(msgToSend, command);
+			strcat(msgToSend, " ");
+			strcat(msgToSend, timeStamp);
+
 			cmdArray[1][strlen(cmdArray[1]) - 1] = 0;	//remove the newline character caused by fgets
 			if(strcmp(toLowerCase(cmdArray[0]), "add") == 0){
 				FILE* file;
@@ -110,6 +124,8 @@ int main(int argc, char *argv[])
 				char* content = (char*)malloc(1024*sizeof(char));
 				fgets(content, 1024, stdin);
 				fputs(content, file);
+				strcat(msgToSend, " ");
+				strcat(msgToSend, content);
 				fclose(file);
 			}
 			else if(strcmp(toLowerCase(cmdArray[0]), "rm") == 0){
@@ -121,15 +137,19 @@ int main(int argc, char *argv[])
 				}
 				else{
 					printf("Target file does not exist\n");
+					goto here;
 				}
 			}
 
-	        if (sendto(sock, toSend, sendStringLen, 0, (struct sockaddr *) 
+			sendStringLen = strlen(msgToSend);
+			msgToSend[sendStringLen] = 0;
+
+	        if (sendto(sock, msgToSend, sendStringLen, 0, (struct sockaddr *) 
 	               &broadcastAddr, sizeof(broadcastAddr)) != sendStringLen){
 	             perror("sendto() sent a different number of bytes than expected");
 	     	}
 	     	else{
-	     		printf("Sending message to all clients: %s\n", toSend);
+	     		printf("Sending message to all clients: %s\n", command);
 	     	}
 
 	        sleep(3);   /* Avoids flooding the network */
