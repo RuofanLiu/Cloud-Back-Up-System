@@ -5,7 +5,7 @@
 #include <stdlib.h>     /* for atoi() and exit() */
 #include <string.h>     /* for memset() */
 #include <unistd.h>     /* for close() */
-
+#include <ctype.h>
 /*
 	Supported Command:
 	1. ADD <filename>
@@ -13,15 +13,41 @@
 */
 
 /*
-This function checks if a string contains a valid command or not
-It returns the substring before first whitespace
+This function splits the command by whitespace and return them as an array
 */
-char* checkStr(char* command){
-	char *p = strtok(command, " ");
-	if(!p){
-		*p = 0;
+char** checkStr(char* command){
+	char** rst = (char**)malloc(2*sizeof(char*));
+	char *p = strtok(command, " \n");
+	int i = 0;
+	while (p != NULL)
+    {
+        rst[i++] = p;
+        p = strtok (NULL, "/");
+    }
+	return rst;
+}
+
+/*
+	This fucntion returns the input string to lower case
+*/
+char* toLowerCase(char* str){
+	for(int i = 0; str[i]; i++){
+	  str[i] = tolower(str[i]);
 	}
-	return p;
+	return str;
+}
+
+/*
+	This function checks if the file exists in the current directory or not by calling fopen
+	returns 0 if the file exist and 1 otherwise
+*/
+int checkExistence(char* filename){
+	FILE* file;
+	file = fopen(filename, "r");
+	if(file == NULL){
+		return 1;
+	}
+	return 0;
 }
 
 int main(int argc, char *argv[])
@@ -66,22 +92,50 @@ int main(int argc, char *argv[])
     while(1) /* Run forever */
     {
     	/*take input command*/
-    	printf("Type in a number \n");
+    	printf("Type in a valid command (add/rm <filename>) \n");
 		fgets(sendString, 1024, stdin);
 		sendStringLen = strlen(sendString);  /* Find length of sendString */
-		char* cmd = checkStr(sendString);
-		if(strcmp(cmd, "ADD") == 0 || strcmp(cmd, "RM") == 0){
+		char* toSend = (char*)malloc(1024*sizeof(char));
+		strcpy(toSend, sendString);
+		toSend[strlen(toSend) - 1] = 0;
+		char** cmdArray = checkStr(sendString);
+		if(strcmp(toLowerCase(cmdArray[0]), "add") == 0 || strcmp(toLowerCase(cmdArray[0]), "rm") == 0){
          /* Broadcast sendString in datagram to clients every 3 seconds*/
-		
-	        if (sendto(sock, sendString, sendStringLen, 0, (struct sockaddr *) 
+			/*i the command is "add", retrieve the content and write to file*/
+			cmdArray[1][strlen(cmdArray[1]) - 1] = 0;	//remove the newline character caused by fgets
+			if(strcmp(toLowerCase(cmdArray[0]), "add") == 0){
+				FILE* file;
+				file = fopen(cmdArray[1], "w+");
+				printf("Please enter the content of the file\n");
+				char* content = (char*)malloc(1024*sizeof(char));
+				fgets(content, 1024, stdin);
+				fputs(content, file);
+				fclose(file);
+			}
+			else if(strcmp(toLowerCase(cmdArray[0]), "rm") == 0){
+				if(checkExistence(cmdArray[1]) == 0){
+					int status = remove(cmdArray[1]);
+					if(status == 0){
+						printf("Local file deleted\n");
+					}
+				}
+				else{
+					printf("Target file does not exist\n");
+				}
+			}
+
+	        if (sendto(sock, toSend, sendStringLen, 0, (struct sockaddr *) 
 	               &broadcastAddr, sizeof(broadcastAddr)) != sendStringLen){
 	             perror("sendto() sent a different number of bytes than expected");
 	     	}
 	     	else{
-	     		printf("Sending message to all clients: %s\n", sendString);
+	     		printf("Sending message to all clients: %s\n", toSend);
 	     	}
 
 	        sleep(3);   /* Avoids flooding the network */
+     	}
+     	else{
+     		printf("Command not found.\nUsage: add/rm <filename>\n");
      	}
     }
     /* NOT REACHED */

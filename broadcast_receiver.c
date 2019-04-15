@@ -45,6 +45,7 @@ int main(int argc, char *argv[])
 
         recvString[recvStringLen] = '\0';
         printf("Received: %s\n", recvString);    /* Print the received string */
+        
     }
     close(sock);
     exit(0);
