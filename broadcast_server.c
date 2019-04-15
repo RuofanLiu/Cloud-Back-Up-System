@@ -71,7 +71,6 @@ int main(int argc, char *argv[])
 
     broadcastIP = argv[1];            /* First arg:  broadcast IP address */ 
     broadcastPort = atoi(argv[2]);    /* Second arg:  broadcast port */
-    //sendString = argv[3];             /* Third arg:  string to broadcast */	//TO DO: change the stringt be a message
 
     /* Create socket for sending/receiving datagrams */
     if ((sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
@@ -111,7 +110,7 @@ int main(int argc, char *argv[])
 				The message to be sent will have the following format
 				<command> <filename> <timestamp> (<content>)
 			*/
-			sprintf(timeStamp, "%s", ctime(&t));
+			sprintf(timeStamp, "%-24.24s", ctime(&t));
 			strcat(msgToSend, command);
 			strcat(msgToSend, " ");
 			strcat(msgToSend, timeStamp);
@@ -123,7 +122,8 @@ int main(int argc, char *argv[])
 				printf("Please enter the content of the file\n");
 				char* content = (char*)malloc(1024*sizeof(char));
 				fgets(content, 1024, stdin);
-				fputs(content, file);
+				content[strlen(content) - 1] = 0;	//remove the newline character in the content
+				fputs(content, file);	//write content to file
 				strcat(msgToSend, " ");
 				strcat(msgToSend, content);
 				fclose(file);
@@ -149,7 +149,7 @@ int main(int argc, char *argv[])
 	             perror("sendto() sent a different number of bytes than expected");
 	     	}
 	     	else{
-	     		printf("Sending message to all clients: %s\n", command);
+	     		printf("Sending message to all clients: %s\n", msgToSend);
 	     	}
 
 	        sleep(3);   /* Avoids flooding the network */
