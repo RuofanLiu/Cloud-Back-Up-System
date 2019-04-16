@@ -36,6 +36,19 @@ char** checkStr(char* command){
     return rst;
 }
 
+/*
+    This function checks if the file exists in the current directory or not by calling fopen
+    returns 0 if the file exist and 1 otherwise
+*/
+int checkExistence(char* filename){
+    FILE* file;
+    file = fopen(filename, "r");
+    if(file == NULL){
+        return 1;
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
     int sock;                         /* Socket */
@@ -110,6 +123,25 @@ int main(int argc, char *argv[])
         else{
             log[logSize] = lu;
             logSize++;
+        }
+
+        /*create or remove file baed on the command received from server*/
+        if(strcmp(lu.command, "add") == 0){
+            FILE* file;
+            file = fopen(lu.filename, "w+");
+            fputs(lu.content, file);   //write content to file
+            fclose(file);
+        }
+        else if(strcmp(lu.command, "rm") == 0){
+            if(checkExistence(lu.filename) == 0){
+                int status = remove(lu.filename);
+                if(status == 0){
+                    printf("%s deleted\n", lu.filename);
+                }
+            }
+            else{
+                printf("Target file does not exist\n");
+            }
         }
     }
     close(sock);

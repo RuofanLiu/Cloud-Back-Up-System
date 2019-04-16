@@ -39,19 +39,6 @@ char* toLowerCase(char* str){
 	return str;
 }
 
-/*
-	This function checks if the file exists in the current directory or not by calling fopen
-	returns 0 if the file exist and 1 otherwise
-*/
-int checkExistence(char* filename){
-	FILE* file;
-	file = fopen(filename, "r");
-	if(file == NULL){
-		return 1;
-	}
-	return 0;
-}
-
 int main(int argc, char *argv[])
 {
     int sock;                         /* Socket */
@@ -117,28 +104,12 @@ int main(int argc, char *argv[])
 
 			cmdArray[1][strlen(cmdArray[1]) - 1] = 0;	//remove the newline character caused by fgets
 			if(strcmp(toLowerCase(cmdArray[0]), "add") == 0){
-				FILE* file;
-				file = fopen(cmdArray[1], "w+");
 				printf("Please enter the content of the file\n");
 				char* content = (char*)malloc(1024*sizeof(char));
 				fgets(content, 1024, stdin);
 				content[strlen(content) - 1] = 0;	//remove the newline character in the content
-				fputs(content, file);	//write content to file
 				strcat(msgToSend, " ");
 				strcat(msgToSend, content);
-				fclose(file);
-			}
-			else if(strcmp(toLowerCase(cmdArray[0]), "rm") == 0){
-				if(checkExistence(cmdArray[1]) == 0){
-					int status = remove(cmdArray[1]);
-					if(status == 0){
-						printf("Local file deleted\n");
-					}
-				}
-				else{
-					printf("Target file does not exist\n");
-					goto here;
-				}
 			}
 
 			sendStringLen = strlen(msgToSend);
@@ -152,10 +123,11 @@ int main(int argc, char *argv[])
 	     		printf("Sending message to all clients: %s\n", msgToSend);
 	     	}
 
-	        sleep(3);   /* Avoids flooding the network */
+	        sleep(1);   /* Avoids flooding the network */
      	}
      	else{
      		printf("Command not found.\nUsage: add/rm <filename>\n");
+     		goto here;
      	}
     }
     /* NOT REACHED */
