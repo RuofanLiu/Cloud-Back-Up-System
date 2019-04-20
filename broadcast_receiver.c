@@ -25,12 +25,12 @@ This function splits the command by whitespace and return them as an array
 */
 char** checkStr(char* command){
     char** rst = (char**)malloc(1024*sizeof(char*));
-    char *p = strtok(command, " ");
+    char *p = strtok(command, " \n");
     int i = 0;
     while (p != NULL)
     {
         rst[i++] = p;
-        p = strtok (NULL, " ");
+        p = strtok (NULL, " \n");
     }
     commandSize = i;
     return rst;
@@ -52,7 +52,7 @@ int checkExistence(char* filename){
 int main(int argc, char *argv[])
 {
     int sock;                         /* Socket */
-    struct sockaddr_in broadcastAddr; /* Broadcast Address */
+    struct sockaddr_in broadcastAddr, Sender_addr; /* Broadcast Address */
     unsigned short broadcastPort;     /* Port */
     char* recvString = (char*)calloc(1024, sizeof(char)); /* Buffer for received string */
     int recvStringLen;                /* Length of received string */
@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
     broadcastPort = atoi(argv[1]);   /* First arg: broadcast port */
 
     /* Create a best-effort datagram socket using UDP */
-    if ((sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
+    if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
         perror("socket() failed");
 
     /* Construct bind structure */
@@ -80,13 +80,20 @@ int main(int argc, char *argv[])
     /* Bind to the broadcast port */
     if (bind(sock, (struct sockaddr *) &broadcastAddr, sizeof(broadcastAddr)) < 0)
         perror("bind() failed");
+
     while(1){
         /* Receive a single datagram from the server */
         if ((recvStringLen = recvfrom(sock, recvString, MAXRECVSTRING, 0, NULL, 0)) < 0)
             perror("recvfrom() failed");
 
-        recvString[recvStringLen] = '\0';
-        printf("Received: %s\n", recvString);    /* Print the received string */
+        recvString[recvStringLen] = '\n';
+        //printf("Received: %s\n", recvString);    /* Print the received string */
+
+        /*Create a local log for the server to read*/
+        FILE* fp;
+        fp = fopen("log.txt", "a+");
+        fputs(recvString, fp);
+        fclose(fp);
 
         /*Create user log to guarantee data consistency*/
         struct logUnit lu;
@@ -118,7 +125,6 @@ int main(int argc, char *argv[])
                 log[i] = log[i + 1];
             }
             log[MAXLOGSIZE - 1] = lu;
-            printf("%s\n", log[MAXLOGSIZE - 1].filename);
         }
         else{
             log[logSize] = lu;
@@ -130,6 +136,7 @@ int main(int argc, char *argv[])
             FILE* file;
             file = fopen(lu.filename, "w+");
             fputs(lu.content, file);   //write content to file
+            printf("%s added\n", lu.filename);
             fclose(file);
         }
         else if(strcmp(lu.command, "rm") == 0){

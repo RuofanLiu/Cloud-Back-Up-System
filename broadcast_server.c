@@ -115,6 +115,7 @@ int main(int argc, char *argv[])
 			sendStringLen = strlen(msgToSend);
 			msgToSend[sendStringLen] = 0;
 
+
 	        if (sendto(sock, msgToSend, sendStringLen, 0, (struct sockaddr *) 
 	               &broadcastAddr, sizeof(broadcastAddr)) != sendStringLen){
 	             perror("sendto() sent a different number of bytes than expected");
@@ -132,4 +133,3 @@ int main(int argc, char *argv[])
     }
     /* NOT REACHED */
 }
-
