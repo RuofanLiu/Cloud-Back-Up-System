@@ -1,4 +1,4 @@
-// from: http://cs.ecs.baylor.edu/~donahoo/practical/CSockets/code/BroadcastReceiver.c
+//part of the code is from: http://cs.ecs.baylor.edu/~donahoo/practical/CSockets/code/BroadcastReceiver.c
 #include <stdio.h>      /* for printf() and fprintf() */
 #include <sys/socket.h> /* for socket(), connect(), sendto(), and recvfrom() */
 #include <arpa/inet.h>  /* for sockaddr_in and inet_addr() */
@@ -7,7 +7,7 @@
 #include <unistd.h>     /* for close() */
 
 #define MAXRECVSTRING 255  /* Longest string to receive */
-#define MAXLOGSIZE 2
+#define MAXLOGSIZE 10
 
 int commandSize = 0;    //record the size of the cmdArray
 /*
@@ -52,7 +52,7 @@ int checkExistence(char* filename){
 int main(int argc, char *argv[])
 {
     int sock;                         /* Socket */
-    struct sockaddr_in broadcastAddr, Sender_addr; /* Broadcast Address */
+    struct sockaddr_in broadcastAddr, from; /* Broadcast Address */
     unsigned short broadcastPort;     /* Port */
     char* recvString = (char*)calloc(1024, sizeof(char)); /* Buffer for received string */
     int recvStringLen;                /* Length of received string */
@@ -81,14 +81,14 @@ int main(int argc, char *argv[])
     if (bind(sock, (struct sockaddr *) &broadcastAddr, sizeof(broadcastAddr)) < 0)
         perror("bind() failed");
 
+    int fromlen = sizeof(struct sockaddr_in);
     while(1){
         /* Receive a single datagram from the server */
-        if ((recvStringLen = recvfrom(sock, recvString, MAXRECVSTRING, 0, NULL, 0)) < 0)
+        if ((recvStringLen = recvfrom(sock, recvString, MAXRECVSTRING, 0, (struct sockaddr *)&from, &fromlen)) < 0)
             perror("recvfrom() failed");
 
         recvString[recvStringLen] = '\n';
         //printf("Received: %s\n", recvString);    /* Print the received string */
-
         /*Create a local log for the server to read*/
         FILE* fp;
         fp = fopen("log.txt", "a+");
@@ -118,7 +118,6 @@ int main(int argc, char *argv[])
                 strcat(lu.content, cmdArray[i]);
             }
         }
-
         /*The log only keeps track of MAXLOGSIZE most recent logs*/
         if(logSize == MAXLOGSIZE){
             for(int i = 0; i < MAXLOGSIZE - 1; ++i){
@@ -149,6 +148,14 @@ int main(int argc, char *argv[])
             else{
                 printf("Target file does not exist\n");
             }
+        }
+        
+        int n = sendto(sock,"ACK",3, 0,(struct sockaddr *)&from,fromlen);
+        if (n  < 0) {
+            perror("sendto");
+        }
+        else{
+            printf("Sent acknowledgement to server\n");
         }
     }
     close(sock);

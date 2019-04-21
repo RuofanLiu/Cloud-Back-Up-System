@@ -1,4 +1,4 @@
-// from: http://cs.ecs.baylor.edu/~donahoo/practical/CSockets/code/BroadcastSender.c
+//part of the code is from: http://cs.ecs.baylor.edu/~donahoo/practical/CSockets/code/BroadcastSender.c
 #include <stdio.h>      /* for printf() and fprintf() */
 #include <sys/socket.h> /* for socket() and bind() */
 #include <arpa/inet.h>  /* for sockaddr_in */
@@ -42,7 +42,7 @@ char* toLowerCase(char* str){
 int main(int argc, char *argv[])
 {
     int sock;                         /* Socket */
-    struct sockaddr_in broadcastAddr; /* Broadcast address */
+    struct sockaddr_in broadcastAddr, from; /* Broadcast address */
     char *broadcastIP;                /* IP broadcast address */
     unsigned short broadcastPort;     /* Server port */
     char *sendString = (char*)malloc(1024*sizeof(char));                 /* String to broadcast */
@@ -75,12 +75,11 @@ int main(int argc, char *argv[])
     broadcastAddr.sin_addr.s_addr = inet_addr(broadcastIP);/* Broadcast IP address */
     broadcastAddr.sin_port = htons(broadcastPort);         /* Broadcast port */
 
-    
+    int length=sizeof(struct sockaddr_in);
     printf("Starting UDP server for broadcasting\n");
     while(1) /* Run forever */
     {
     	/*take input command*/
-    	here:
     	printf("Type in a valid command (add/rm <filename>) \n");
 		fgets(sendString, 1024, stdin);
 		char* command = (char*)malloc(1024*sizeof(char));
@@ -122,13 +121,24 @@ int main(int argc, char *argv[])
 	     	}
 	     	else{
 	     		printf("Sending message to all clients: %s\n", msgToSend);
+	     		
 	     	}
 
+	     	char* buffer = (char*)calloc(1024, sizeof(char));
+	     	int n = recvfrom(sock,buffer,4,0,(struct sockaddr *)&from, &length);
+
+   			if (n < 0) {
+   				perror("recvfrom");
+   			}
+   			else{
+   				buffer[strlen(buffer)] = 0;
+   				printf("Received %s from server\n", buffer);
+   			}
 	        sleep(1);   /* Avoids flooding the network */
      	}
      	else{
      		printf("Command not found.\nUsage: add/rm <filename>\n");
-     		goto here;
+     		//goto here;
      	}
     }
     /* NOT REACHED */
