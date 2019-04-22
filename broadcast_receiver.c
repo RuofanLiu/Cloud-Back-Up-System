@@ -106,15 +106,15 @@ char* receive_encrypted_msg(int sock, unsigned char* key) {
 }
 
 void generate_keys(int id, int sock, char* shared_secret_str) {
-	char* recv_msg = (char*)calloc(KEY_SIZE+strlen("1 1 "), sizeof(char));
-	char* round2_msg = (char*)calloc(KEY_SIZE, sizeof(char));
+	char* recv_msg = (char*)calloc(KEY_SIZE+strlen("1 1 ")+1, sizeof(char));
+	char* round2_msg = (char*)calloc(KEY_SIZE+1, sizeof(char));
 	int fd, num;
 	if(0 != access(FIFO_NAME, 0)) {
 		mkfifo(FIFO_NAME, 0666);
 	}
 	// should receive a total of 6 messages from the servers
 	for(int i = 0; i < 6; i++) {
-        if ((num = recvfrom(sock, recv_msg, KEY_SIZE+strlen("1 1 "), 0, NULL, 0)) < 0)
+        if ((num = recvfrom(sock, recv_msg, KEY_SIZE+strlen("1 1 ")+1, 0, NULL, 0)) < 0)
             perror("recvfrom() failed");
 
         printf("Received: %s\n", recv_msg);    /* Print the received string */
