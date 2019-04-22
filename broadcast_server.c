@@ -149,7 +149,7 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 
 	// open a named pipe and receive the needed message from the "client" running on this node
 	// e.g. on node 0, we need to receive a round 1 message from node 2
-	mknod(FIFO_NAME, S_IFIFO | 0644 , 0);
+	mkfifo(FIFO_NAME, 0644);
 	int fd = open(FIFO_NAME, O_RDONLY);
 	char* recv_round1_msg = (char*)calloc(256, sizeof(char));
 	int num;
@@ -158,6 +158,7 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
         else {
             printf("read round 1 message- %d bytes: \"%s\"\n", num, recv_round1_msg);
     }
+	close(fd);
 
 	// the following will compute g^(priv0)(priv2), if we are at node 2
 	BIGNUM *recv_round1_msg_BN = BN_new();
@@ -191,6 +192,7 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
         else {
             printf("read round 2 message- %d bytes: \"%s\"\n", num, recv_round2_msg);
     }
+	close(fd);
 
 	// calculate g^(priv0)(priv1)(priv2), i.e. the shared secret
 	BIGNUM *recv_round2_msg_BN = BN_new();
@@ -205,6 +207,7 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 		perror("write");
 	else
 		printf("sent the shared secret locally: wrote %d bytes\n", num);
+	close(fd);
 
 	BN_clear(public_mod);
 	BN_clear(private_key);
@@ -260,7 +263,7 @@ int main(int argc, char *argv[])
 	printf("press enter to start key generation\n");
 	getchar();
 	generate_keys(id_str, sock, broadcastAddr, shared_secret);
-	send_encrypted_msg(sock, broadcastAddr, BN_bn2hex(shared_secret), "test");
+	//send_encrypted_msg(sock, broadcastAddr, BN_bn2hex(shared_secret), "test");
 
 	BN_clear(shared_secret);
 //    while(1) /* Run forever */
