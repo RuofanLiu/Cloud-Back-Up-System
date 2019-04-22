@@ -89,7 +89,7 @@ void send_encrypted_msg(int sock, struct sockaddr_in broadcastAddr, unsigned cha
 		perror("sendto() sent a different number of bytes than expected");
 	}
 	else {
-		printf("Sending message to all clients: %s\n", iv_str);
+		printf("Sending initialization vector: %s\n", iv_str);
 	}
 	char* encrypted_msg = (unsigned char*)calloc(1024, sizeof(char));
 	encrypt(msg, strlen(msg), key, iv_str, encrypted_msg);
@@ -98,8 +98,121 @@ void send_encrypted_msg(int sock, struct sockaddr_in broadcastAddr, unsigned cha
 		perror("sendto() sent a different number of bytes than expected");
 	}
 	else {
-		printf("Sending message to all clients: %s\n", iv_str);
+		printf("broadcasting encrypted message: %s\n", iv_str);
 	}
+	BN_clear(iv);
+}
+
+/* The following procedure is used for key generation:
+	round 1:
+	A: send g^a to B (receive g^c)
+	B: send g^b to C (receive g^a)
+	C: send g^c to A (receive g^b)
+	
+	round 2:
+	A: send g^ac to B (receive g^bc)
+	B: send g^ab to C (receive g^ac)
+	C: send g^bc to A (receive g^ab)
+	
+	then all can calculate g^abc
+*/
+void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIGNUM* shared_secret) {
+	BN_CTX *ctx = BN_CTX_new();
+	BIGNUM *public_mod = BN_dup(BN_get_rfc2409_prime_1024(NULL)); // our "p" in diffie-hellman
+	BIGNUM *private_key = BN_new();
+	BIGNUM *public_key = BN_new();
+	BIGNUM *intermediate_value = BN_new();
+
+	BIGNUM *public_base = BN_new(); // our "g" in diffie-hellman
+	BN_set_word(public_base, 2); //rfc 2409 uses 2 as the generator
+
+	BN_rand(private_key, 1024, -1, 0); // our private key is a random 1024-bit integer
+
+	// calculate the public key as g^(priv) mod p
+	BN_mod_exp(public_key, public_base, private_key, public_mod, ctx);
+
+	// construct the message to broadcast: <id 1 public_key> (1 to denote round 1 of communication)
+	char* public_key_str = BN_bn2hex(public_key);
+	char* round1_msg = (char*)malloc(strlen(public_key_str)+strlen(id_str)+strlen(" "));
+	strcpy(round1_msg, id_str);
+	strcat(round1_msg, " 1 ");
+	strcat(round1_msg, public_key_str);
+
+	// broadcast the round 1 message
+	if (sendto(sock, round1_msg, strlen(round1_msg), 0, (struct sockaddr *) 
+				&broadcastAddr, sizeof(broadcastAddr)) != strlen(round1_msg)){
+		perror("sendto() sent a different number of bytes than expected");
+	}
+	else {
+		printf("round 1 broadcast: %s\n", round1_msg);
+	}
+
+	// open a named pipe and receive the needed message from the "client" running on this node
+	// e.g. on node 0, we need to receive a round 1 message from node 2
+	mknod(FIFO_NAME, S_IFIFO | 0644 , 0);
+	int fd = open(FIFO_NAME, O_RDONLY);
+	char* recv_round1_msg = (char*)calloc(256, sizeof(char));
+	int num;
+	if ((num = read(fd, recv_round1_msg, 256)) == -1)
+            perror("read");
+        else {
+            printf("read round 1 message- %d bytes: \"%s\"\n", num, recv_round1_msg);
+    }
+
+	// the following will compute g^(priv0)(priv2), if we are at node 2
+	BIGNUM *recv_round1_msg_BN = BN_new();
+	BN_hex2bn(&recv_round1_msg_BN, recv_round1_msg);
+	BN_mod_exp(intermediate_value, recv_round1_msg_BN, private_key, public_mod, ctx);
+	printf("intermediate value: %s\n", BN_bn2hex(intermediate_value));
+
+	// construct the round 2 message: <id 2 intermediate_value>
+	char* int_value_str = BN_bn2hex(intermediate_value);
+	char* round2_msg = (char*)malloc(strlen(int_value_str)+strlen(id_str)+strlen(" 2 "));
+	strcpy(round2_msg, id_str);
+	strcat(round2_msg, " 2 ");
+	strcat(round2_msg, int_value_str);
+
+	// broadcast the round 2 message
+	if (sendto(sock, round2_msg, strlen(round2_msg), 0, (struct sockaddr *) 
+				&broadcastAddr, sizeof(broadcastAddr)) != strlen(round2_msg)){
+		perror("sendto() sent a different number of bytes than expected");
+	}
+	else {
+		printf("round 2 broadcast: %s\n", round2_msg);
+
+	}
+
+	// open a named pipe and receive the needed message from the local client
+	// e.g. on node 0, we need to receive a round 2 message from node 1
+	fd = open(FIFO_NAME, O_RDONLY);
+	char* recv_round2_msg = (char*)calloc(256, sizeof(char));
+	if ((num = read(fd, recv_round2_msg, 256)) == -1)
+            perror("read");
+        else {
+            printf("read round 2 message- %d bytes: \"%s\"\n", num, recv_round2_msg);
+    }
+
+	// calculate g^(priv0)(priv1)(priv2), i.e. the shared secret
+	BIGNUM *recv_round2_msg_BN = BN_new();
+	BN_hex2bn(&recv_round2_msg_BN, recv_round2_msg);
+	BN_mod_exp(shared_secret, recv_round2_msg_BN, private_key, public_mod, ctx);
+	printf("shared secret: %s\n", BN_bn2hex(shared_secret));
+
+	// open the named pipe and send symmetric key to the local client
+	fd = open(FIFO_NAME, O_WRONLY);
+	char* shared_secret_str = BN_bn2hex(shared_secret);
+	if (num = write(fd, shared_secret_str, strlen(shared_secret_str)) == -1)
+		perror("write");
+	else
+		printf("sent the shared secret locally: wrote %d bytes\n", num);
+
+	BN_clear(public_mod);
+	BN_clear(private_key);
+	BN_clear(public_key);
+	BN_clear(intermediate_value);
+	BN_clear(recv_round1_msg_BN);
+	BN_clear(recv_round2_msg_BN);
+	BN_CTX_free(ctx);
 }
 
 int main(int argc, char *argv[])
@@ -112,18 +225,9 @@ int main(int argc, char *argv[])
     int broadcastPermission;          /* Socket opt to set permission to broadcast */
     unsigned int sendStringLen;       /* Length of string to broadcast */
 	time_t t = time(0);
-	char* id = (char*)malloc(16);
+	char* id_str = (char*)malloc(16);
 	RAND_poll();					  /* seed the RNG */
-
-	BN_CTX *ctx = BN_CTX_new();
-	BIGNUM *public_mod = BN_dup(BN_get_rfc2409_prime_1024(NULL));
-	BIGNUM *public_base = BN_new();
-	BIGNUM *private_key = BN_new();
-	BIGNUM *public_key = BN_new();
-	BIGNUM *intermediate_value = BN_new();
-	BIGNUM *shared_secret = BN_new();
-	BN_set_word(public_base, 2);
-	BN_rand(private_key, 1024, -1, 0);
+	BIGNUM *shared_secret = BN_new(); /* the symmetric key used for encryption */
 
     if (argc < 4)                     /* Test for correct number of parameters */
     {
@@ -131,7 +235,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-	id = argv[1];
+	id_str = argv[1];
     broadcastIP = argv[2];            /* First arg:  broadcast IP address */ 
     broadcastPort = atoi(argv[3]);    /* Second arg:  broadcast port */
 
@@ -153,91 +257,10 @@ int main(int argc, char *argv[])
 
     printf("Starting UDP server for broadcasting\n");
 
-	/* key generation */
-	/*
-		round 1:
-		A: send g^a to B (receive g^c)
-		B: send g^b to C (receive g^a)
-		C: send g^c to A (receive g^b)
-		
-		round 2:
-		A: send g^ac to B (receive g^bc)
-		B: send g^ab to C (receive g^ac)
-		C: send g^bc to A (receive g^ab)
-		
-		then all can calculate g^abc
-	* */
-	BN_mod_exp(public_key, public_base, private_key, public_mod, ctx);
+	generate_keys(id_str, sock, broadcastAddr, shared_secret);
+	send_encrypted_msg(sock, broadcastAddr, BN_bn2hex(shared_secret), "test");
 
-	char* public_key_str = BN_bn2hex(public_key);
-	char* msgRound1 = (char*)malloc(strlen(public_key_str)+strlen(id)+strlen(" "));
-	strcpy(msgRound1, id);
-	strcat(msgRound1, " 1 ");
-	strcat(msgRound1, public_key_str);
-
-	if (sendto(sock, msgRound1, strlen(msgRound1), 0, (struct sockaddr *) 
-				&broadcastAddr, sizeof(broadcastAddr)) != strlen(msgRound1)){
-		perror("sendto() sent a different number of bytes than expected");
-	}
-	else {
-		printf("Sending message to all clients: %s\n", msgRound1);
-
-	}
-	mknod(FIFO_NAME, S_IFIFO | 0644 , 0);
-
-	int fd = open(FIFO_NAME, O_RDONLY);
-	char* recvRound1 = (char*)calloc(256, sizeof(char));
-	int num;
-	if ((num = read(fd, recvRound1, 256)) == -1)
-            perror("read");
-        else {
-            printf("tick: read %d bytes: \"%s\"\n", num, recvRound1);
-    }
-
-	// the following will compute g^ac, if we are at node A
-	BIGNUM *recvRound1BN = BN_new();
-	BN_hex2bn(&recvRound1BN, recvRound1);
-	BN_mod_exp(intermediate_value, recvRound1BN, private_key, public_mod, ctx);
-	printf("intermediate value: %s\n", BN_bn2hex(intermediate_value));
-
-	char* int_value_str = BN_bn2hex(intermediate_value);
-	char* msgRound2 = (char*)malloc(strlen(int_value_str)+strlen(id)+strlen(" 2 "));
-	strcpy(msgRound2, id);
-	strcat(msgRound2, " 2 ");
-	strcat(msgRound2, int_value_str);
-
-	if (sendto(sock, msgRound2, strlen(msgRound2), 0, (struct sockaddr *) 
-				&broadcastAddr, sizeof(broadcastAddr)) != strlen(msgRound2)){
-		perror("sendto() sent a different number of bytes than expected");
-	}
-	else {
-		printf("Sending message to all clients: %s\n", msgRound2);
-
-	}
-
-	fd = open(FIFO_NAME, O_RDONLY);
-	char* recvRound2 = (char*)calloc(256, sizeof(char));
-	if ((num = read(fd, recvRound2, 256)) == -1)
-            perror("read");
-        else {
-            printf("tick: read %d bytes: \"%s\"\n", num, recvRound2);
-    }
-
-	BIGNUM *recvRound2BN = BN_new();
-	BN_hex2bn(&recvRound2BN, recvRound2);
-	BN_mod_exp(shared_secret, recvRound2BN, private_key, public_mod, ctx);
-	printf("shared secret: %s\n", BN_bn2hex(shared_secret));
-
-	// send symmetric key to client on this same node
-	fd = open(FIFO_NAME, O_WRONLY);
-	char* shared_secret_str = BN_bn2hex(shared_secret);
-	if (num = write(fd, shared_secret_str, strlen(shared_secret_str)) == -1)
-		perror("write");
-	else
-		printf("speak: wrote %d bytes\n", num);
-
-	send_encrypted_msg(sock, broadcastAddr, shared_secret_str, "test");
-
+	BN_clear(shared_secret);
 //    while(1) /* Run forever */
 //    {
 //    	/*take input command*/

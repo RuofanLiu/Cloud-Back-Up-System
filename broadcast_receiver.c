@@ -104,6 +104,43 @@ char* receive_encrypted_msg(int sock, unsigned char* key) {
 	return decrypted_msg;
 }
 
+void generate_keys(int id, int sock, char* shared_secret_str) {
+	char* recv_msg = (char*)calloc(260, sizeof(char));
+	mknod(FIFO_NAME, S_IFIFO | 0666, 0);
+	char* round2_msg = (char*)calloc(256, sizeof(char));
+	int fd, num;
+	for(int i = 0; i < 6; i++) {
+        if ((num = recvfrom(sock, recv_msg, 260, 0, NULL, 0)) < 0)
+            perror("recvfrom() failed");
+
+        printf("Received: %s\n", recv_msg);    /* Print the received string */
+		char** recv_msg_array = checkStr(recv_msg);
+		if(atoi(recv_msg_array[0]) == (id + 2) % 3 && atoi(recv_msg_array[1]) == 1) {
+			fd = open(FIFO_NAME, O_WRONLY);
+			if ((num = write(fd, recv_msg_array[2], strlen(recv_msg_array[2]))) == -1)
+				perror("write");
+			else
+				printf("sent round 1 message locally - %d bytes\n", num);
+		} else if(atoi(recv_msg_array[0]) == (id + 1) % 3 && atoi(recv_msg_array[1]) == 2) {
+			strcpy(round2_msg, recv_msg_array[2]);
+		}
+	}
+	// once all 6 messages have been received, we know for sure round 1 is over
+	fd = open(FIFO_NAME, O_WRONLY);
+	if (num = write(fd, round2_msg, strlen(round2_msg)) == -1)
+		perror("write");
+	else
+		printf("sent round2 message locally - %d bytes\n", num);
+
+	// need to read symmetric key from server
+	fd = open(FIFO_NAME, O_RDONLY);
+	if ((num = read(fd, shared_secret_str, 256)) == -1)
+            perror("read");
+	else {
+		printf("received shared secret - %d bytes: \"%s\"\n", num, shared_secret_str);
+	}
+}
+
 int main(int argc, char *argv[])
 {
     int sock;                         /* Socket */
@@ -114,6 +151,7 @@ int main(int argc, char *argv[])
     struct logUnit log[MAXLOGSIZE];           /*a log to keep track of the information to stay consistant with other nodes*/
     int logSize = 0;
 	int id;
+	char* shared_secret_str = (char*)calloc(256, sizeof(char));
 
     if (argc != 3)    /* Test for correct number of arguments */
     {
@@ -138,42 +176,10 @@ int main(int argc, char *argv[])
     if (bind(sock, (struct sockaddr *) &broadcastAddr, sizeof(broadcastAddr)) < 0)
         perror("bind() failed");
 
-	char* recvKey = (char*)calloc(260, sizeof(char));
-	int recvKeyLen;
-	mknod(FIFO_NAME, S_IFIFO | 0666, 0);
-	char* msgRound2 = (char*)calloc(256, sizeof(char));
-	int fd, num;
-	for(int i = 0; i < 6; i++) {
-        if ((recvKeyLen = recvfrom(sock, recvKey, 258, 0, NULL, 0)) < 0)
-            perror("recvfrom() failed");
 
-        printf("Received: %s\n", recvKey);    /* Print the received string */
-		char** recvKeyArray = checkStr(recvKey);
-		if(atoi(recvKeyArray[0]) == (id + 2) % 3 && atoi(recvKeyArray[1]) == 1) {
-			fd = open(FIFO_NAME, O_WRONLY);
-			if ((num = write(fd, recvKeyArray[2], strlen(recvKeyArray[2]))) == -1)
-				perror("write");
-			else
-				printf("speak: wrote %d bytes\n", num);
-		} else if(atoi(recvKeyArray[0]) == (id + 1) % 3 && atoi(recvKeyArray[1]) == 2) {
-			strcpy(msgRound2, recvKeyArray[2]);
-		}
-	}
-	// once all 6 messages have been received, we know for sure round 1 is over
-	fd = open(FIFO_NAME, O_WRONLY);
-	if (num = write(fd, msgRound2, strlen(msgRound2)) == -1)
-		perror("write");
-	else
-		printf("speak: wrote %d bytes\n", num);
-
-	// need to read symmetric key from server
-	fd = open(FIFO_NAME, O_RDONLY);
-	char* shared_secret_str = (char*)calloc(256, sizeof(char));
-	if ((num = read(fd, shared_secret_str, 256)) == -1)
-            perror("read");
-	else {
-		printf("tick: read %d bytes: \"%s\"\n", num, shared_secret_str);
-	}
+	printf("press enter to start key generation\n");
+	getchar();
+	generate_keys(id, sock, shared_secret_str);
 	receive_encrypted_msg(sock, shared_secret_str);
 
 //    while(1) {
