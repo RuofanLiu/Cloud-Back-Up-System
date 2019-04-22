@@ -149,11 +149,11 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 
 	// open a named pipe and receive the needed message from the "client" running on this node
 	// e.g. on node 0, we need to receive a round 1 message from node 2
-	mkfifo(FIFO_NAME, 0644);
+	mkfifo(FIFO_NAME, 0666);
 	int fd = open(FIFO_NAME, O_RDONLY);
-	char* recv_round1_msg = (char*)calloc(256, sizeof(char));
+	char* recv_round1_msg = (char*)calloc(strlen(round1_msg), sizeof(char));
 	int num;
-	if ((num = read(fd, recv_round1_msg, 256)) == -1)
+	if ((num = read(fd, recv_round1_msg, strlen(round1_msg))) == -1)
             perror("read");
         else {
             printf("read round 1 message- %d bytes: \"%s\"\n", num, recv_round1_msg);
@@ -186,8 +186,8 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 	// open a named pipe and receive the needed message from the local client
 	// e.g. on node 0, we need to receive a round 2 message from node 1
 	fd = open(FIFO_NAME, O_RDONLY);
-	char* recv_round2_msg = (char*)calloc(256, sizeof(char));
-	if ((num = read(fd, recv_round2_msg, 256)) == -1)
+	char* recv_round2_msg = (char*)calloc(strlen(round2_msg), sizeof(char));
+	if ((num = read(fd, recv_round2_msg, strlen(round2_msg))) == -1)
             perror("read");
         else {
             printf("read round 2 message- %d bytes: \"%s\"\n", num, recv_round2_msg);
@@ -198,11 +198,11 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 	BIGNUM *recv_round2_msg_BN = BN_new();
 	BN_hex2bn(&recv_round2_msg_BN, recv_round2_msg);
 	BN_mod_exp(shared_secret, recv_round2_msg_BN, private_key, public_mod, ctx);
-	printf("shared secret: %s\n", BN_bn2hex(shared_secret));
+	char* shared_secret_str = BN_bn2hex(shared_secret);
+	printf("shared secret: %s\n", shared_secret_str);
 
 	// open the named pipe and send symmetric key to the local client
 	fd = open(FIFO_NAME, O_WRONLY);
-	char* shared_secret_str = BN_bn2hex(shared_secret);
 	if (num = write(fd, shared_secret_str, strlen(shared_secret_str)) == -1)
 		perror("write");
 	else
