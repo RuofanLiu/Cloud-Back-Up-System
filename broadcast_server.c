@@ -257,6 +257,8 @@ int main(int argc, char *argv[])
 
     printf("Starting UDP server for broadcasting\n");
 
+	printf("press enter to start key generation\n");
+	getchar();
 	generate_keys(id_str, sock, broadcastAddr, shared_secret);
 	send_encrypted_msg(sock, broadcastAddr, BN_bn2hex(shared_secret), "test");
 

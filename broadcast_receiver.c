@@ -177,8 +177,6 @@ int main(int argc, char *argv[])
         perror("bind() failed");
 
 
-	printf("press enter to start key generation\n");
-	getchar();
 	generate_keys(id, sock, shared_secret_str);
 	receive_encrypted_msg(sock, shared_secret_str);
 
