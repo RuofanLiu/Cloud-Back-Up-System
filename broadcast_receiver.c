@@ -105,13 +105,13 @@ char* receive_encrypted_msg(int sock, unsigned char* key) {
 }
 
 void generate_keys(int id, int sock, char* shared_secret_str) {
-	char* recv_msg = (char*)calloc(260, sizeof(char));
+	char* recv_msg = (char*)calloc(258, sizeof(char));
 	mkfifo(FIFO_NAME, 0666);
 	char* round2_msg = (char*)calloc(256, sizeof(char));
 	int fd, num;
 	// should receive a total of 6 messages from the servers
 	for(int i = 0; i < 6; i++) {
-        if ((num = recvfrom(sock, recv_msg, 260, 0, NULL, 0)) < 0)
+        if ((num = recvfrom(sock, recv_msg, 258, 0, NULL, 0)) < 0)
             perror("recvfrom() failed");
 
         printf("Received: %s\n", recv_msg);    /* Print the received string */
@@ -125,6 +125,7 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 			close(fd);
 		} else if(atoi(recv_msg_array[0]) == (id + 1) % 3 && atoi(recv_msg_array[1]) == 2) {
 			strcpy(round2_msg, recv_msg_array[2]);
+			printf("stored round2_msg: %s\n", round2_msg);
 		}
 	}
 	// once all 6 messages have been received, we know for sure round 1 is over
