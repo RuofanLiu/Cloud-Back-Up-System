@@ -6,8 +6,18 @@
 #include <string.h>     /* for memset() */
 #include <unistd.h>     /* for close() */
 
+#include <errno.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+
+#include <openssl/conf.h>
+#include <openssl/evp.h>
+#include <openssl/err.h>
+
 #define MAXRECVSTRING 255  /* Longest string to receive */
 #define MAXLOGSIZE 2
+#define FIFO_NAME "shared_data"
 
 int commandSize = 0;    //record the size of the cmdArray
 /*
@@ -49,6 +59,51 @@ int checkExistence(char* filename){
     return 0;
 }
 
+int decrypt(unsigned char *ciphertext, int ciphertext_len, unsigned char *key, 
+		unsigned char *iv, unsigned char *plaintext) {
+  EVP_CIPHER_CTX *ctx;
+
+  int len;
+  int plaintext_len;
+
+  if(!(ctx = EVP_CIPHER_CTX_new())) {
+	  perror("decryption failed");
+  }
+
+  if(1 != EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) {
+	  perror("decryption failed");
+  }
+  if(1 != EVP_DecryptUpdate(ctx, plaintext, &len, ciphertext, ciphertext_len)) {
+	  perror("decryption failed");
+  }
+  plaintext_len = len;
+
+  if(1 != EVP_DecryptFinal_ex(ctx, plaintext + len, &len)) {
+	  perror("decryption failed");
+  }
+  plaintext_len += len;
+
+  EVP_CIPHER_CTX_free(ctx);
+  return plaintext_len;
+}
+
+char* receive_encrypted_msg(int sock, unsigned char* key) {
+	char* iv_str = calloc(128, sizeof(char));
+	int num;
+	if ((num = recvfrom(sock, iv_str, 128, 0, NULL, 0)) < 0)
+		perror("recvfrom() failed");
+
+	char* encrypted_msg = calloc(1024, sizeof(char));
+	if ((num = recvfrom(sock, encrypted_msg, 1024, 0, NULL, 0)) < 0)
+		perror("recvfrom() failed");
+    printf("Received encrypted msg: %s\n", encrypted_msg);    /* Print the received string */
+
+	unsigned char* decrypted_msg = (unsigned char*)calloc(1024, sizeof(char));
+	decrypt(encrypted_msg, strlen(encrypted_msg), key, iv_str, decrypted_msg);
+	printf("decrypted as: %s", decrypted_msg);
+	return decrypted_msg;
+}
+
 int main(int argc, char *argv[])
 {
     int sock;                         /* Socket */
@@ -58,14 +113,16 @@ int main(int argc, char *argv[])
     int recvStringLen;                /* Length of received string */
     struct logUnit log[MAXLOGSIZE];           /*a log to keep track of the information to stay consistant with other nodes*/
     int logSize = 0;
+	int id;
 
-    if (argc != 2)    /* Test for correct number of arguments */
+    if (argc != 3)    /* Test for correct number of arguments */
     {
         fprintf(stderr,"Usage: %s <Broadcast Port>\n", argv[0]);
         exit(1);
     }
 
-    broadcastPort = atoi(argv[1]);   /* First arg: broadcast port */
+    id = atoi(argv[1]);   /* First arg: node id*/
+    broadcastPort = atoi(argv[2]);   /* First arg: broadcast port */
 
     /* Create a best-effort datagram socket using UDP */
     if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
@@ -81,76 +138,123 @@ int main(int argc, char *argv[])
     if (bind(sock, (struct sockaddr *) &broadcastAddr, sizeof(broadcastAddr)) < 0)
         perror("bind() failed");
 
-    while(1){
-        /* Receive a single datagram from the server */
-        if ((recvStringLen = recvfrom(sock, recvString, MAXRECVSTRING, 0, NULL, 0)) < 0)
+	char* recvKey = (char*)calloc(260, sizeof(char));
+	int recvKeyLen;
+	mknod(FIFO_NAME, S_IFIFO | 0666, 0);
+	char* msgRound2 = (char*)calloc(256, sizeof(char));
+	int fd, num;
+	for(int i = 0; i < 6; i++) {
+        if ((recvKeyLen = recvfrom(sock, recvKey, 258, 0, NULL, 0)) < 0)
             perror("recvfrom() failed");
 
-        recvString[recvStringLen] = '\n';
-        //printf("Received: %s\n", recvString);    /* Print the received string */
+        printf("Received: %s\n", recvKey);    /* Print the received string */
+		char** recvKeyArray = checkStr(recvKey);
+		if(atoi(recvKeyArray[0]) == (id + 2) % 3 && atoi(recvKeyArray[1]) == 1) {
+			fd = open(FIFO_NAME, O_WRONLY);
+			if ((num = write(fd, recvKeyArray[2], strlen(recvKeyArray[2]))) == -1)
+				perror("write");
+			else
+				printf("speak: wrote %d bytes\n", num);
+		} else if(atoi(recvKeyArray[0]) == (id + 1) % 3 && atoi(recvKeyArray[1]) == 2) {
+			strcpy(msgRound2, recvKeyArray[2]);
+		}
+	}
+	// once all 6 messages have been received, we know for sure round 1 is over
+	fd = open(FIFO_NAME, O_WRONLY);
+	if (num = write(fd, msgRound2, strlen(msgRound2)) == -1)
+		perror("write");
+	else
+		printf("speak: wrote %d bytes\n", num);
 
-        /*Create a local log for the server to read*/
-        FILE* fp;
-        fp = fopen("log.txt", "a+");
-        fputs(recvString, fp);
-        fclose(fp);
+	// need to read symmetric key from server
+	fd = open(FIFO_NAME, O_RDONLY);
+	char* shared_secret_str = (char*)calloc(256, sizeof(char));
+	if ((num = read(fd, shared_secret_str, 256)) == -1)
+            perror("read");
+	else {
+		printf("tick: read %d bytes: \"%s\"\n", num, shared_secret_str);
+	}
+	receive_encrypted_msg(sock, shared_secret_str);
 
-        /*Create user log to guarantee data consistency*/
-        struct logUnit lu;
-        char** cmdArray = checkStr(recvString);
-        lu.command = (char*)calloc(4, sizeof(char));
-        lu.filename = (char*)calloc(1024, sizeof(char));
-        lu.time = (char*)calloc(22, sizeof(char));
-        strcpy((lu.command), cmdArray[0]);
-        strcpy((lu.filename), cmdArray[1]);
-        strcpy((lu.time), cmdArray[2]);
-        for(int i = 3; i < 7; ++i){
-            strcat((lu.time), " ");
-            strcat((lu.time), cmdArray[i]);
-        }
-        /* if the command is add, add the content to the log as well*/
-        if(strcmp(lu.command, "add") == 0){
-            int contentSize = commandSize - 7;
-            lu.content = (char*)calloc(commandSize + 1, sizeof(char));
-            strcpy((lu.content), cmdArray[7]);
-            for(int i = 8; i < commandSize; ++i){
-                strcat(lu.content, " ");
-                strcat(lu.content, cmdArray[i]);
-            }
-        }
+//    while(1) {
+//        /* Receive a single datagram from the server */
+//        if ((recvStringLen = recvfrom(sock, recvString, MAXRECVSTRING, 0, NULL, 0)) < 0)
+//            perror("recvfrom() failed");
+//
+//        recvString[recvStringLen] = '\n';
+//        printf("Received: %s\n", recvString);    /* Print the received string */
+//	}
 
-        /*The log only keeps track of MAXLOGSIZE most recent logs*/
-        if(logSize == MAXLOGSIZE){
-            for(int i = 0; i < MAXLOGSIZE - 1; ++i){
-                log[i] = log[i + 1];
-            }
-            log[MAXLOGSIZE - 1] = lu;
-        }
-        else{
-            log[logSize] = lu;
-            logSize++;
-        }
-
-        /*create or remove file baed on the command received from server*/
-        if(strcmp(lu.command, "add") == 0){
-            FILE* file;
-            file = fopen(lu.filename, "w+");
-            fputs(lu.content, file);   //write content to file
-            printf("%s added\n", lu.filename);
-            fclose(file);
-        }
-        else if(strcmp(lu.command, "rm") == 0){
-            if(checkExistence(lu.filename) == 0){
-                int status = remove(lu.filename);
-                if(status == 0){
-                    printf("%s deleted\n", lu.filename);
-                }
-            }
-            else{
-                printf("Target file does not exist\n");
-            }
-        }
-    }
+//    while(1){
+//        /* Receive a single datagram from the server */
+//        if ((recvStringLen = recvfrom(sock, recvString, MAXRECVSTRING, 0, NULL, 0)) < 0)
+//            perror("recvfrom() failed");
+//
+//        recvString[recvStringLen] = '\n';
+//        //printf("Received: %s\n", recvString);    /* Print the received string */
+//
+//        /*Create a local log for the server to read*/
+//        FILE* fp;
+//        fp = fopen("log.txt", "a+");
+//        fputs(recvString, fp);
+//        fclose(fp);
+//
+//        /*Create user log to guarantee data consistency*/
+//        struct logUnit lu;
+//        char** cmdArray = checkStr(recvString);
+//        lu.command = (char*)calloc(4, sizeof(char));
+//        lu.filename = (char*)calloc(1024, sizeof(char));
+//        lu.time = (char*)calloc(22, sizeof(char));
+//        strcpy((lu.command), cmdArray[0]);
+//        strcpy((lu.filename), cmdArray[1]);
+//        strcpy((lu.time), cmdArray[2]);
+//        for(int i = 3; i < 7; ++i){
+//            strcat((lu.time), " ");
+//            strcat((lu.time), cmdArray[i]);
+//        }
+//        /* if the command is add, add the content to the log as well*/
+//        if(strcmp(lu.command, "add") == 0){
+//            int contentSize = commandSize - 7;
+//            lu.content = (char*)calloc(commandSize + 1, sizeof(char));
+//            strcpy((lu.content), cmdArray[7]);
+//            for(int i = 8; i < commandSize; ++i){
+//                strcat(lu.content, " ");
+//                strcat(lu.content, cmdArray[i]);
+//            }
+//        }
+//
+//        /*The log only keeps track of MAXLOGSIZE most recent logs*/
+//        if(logSize == MAXLOGSIZE){
+//            for(int i = 0; i < MAXLOGSIZE - 1; ++i){
+//                log[i] = log[i + 1];
+//            }
+//            log[MAXLOGSIZE - 1] = lu;
+//        }
+//        else{
+//            log[logSize] = lu;
+//            logSize++;
+//        }
+//
+//        /*create or remove file baed on the command received from server*/
+//        if(strcmp(lu.command, "add") == 0){
+//            FILE* file;
+//            file = fopen(lu.filename, "w+");
+//            fputs(lu.content, file);   //write content to file
+//            printf("%s added\n", lu.filename);
+//            fclose(file);
+//        }
+//        else if(strcmp(lu.command, "rm") == 0){
+//            if(checkExistence(lu.filename) == 0){
+//                int status = remove(lu.filename);
+//                if(status == 0){
+//                    printf("%s deleted\n", lu.filename);
+//                }
+//            }
+//            else{
+//                printf("Target file does not exist\n");
+//            }
+//        }
+//    }
     close(sock);
     exit(0);
 }
