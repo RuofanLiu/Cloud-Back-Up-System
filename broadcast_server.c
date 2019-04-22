@@ -161,7 +161,7 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
     }
 	close(fd);
 
-	// the following will compute g^(priv0)(priv2), if we are at node 2
+	// the following will compute g^(priv0)(priv2), if we are at node 0
 	BIGNUM *recv_round1_msg_BN = BN_new();
 	BN_hex2bn(&recv_round1_msg_BN, recv_round1_msg);
 	BN_mod_exp(intermediate_value, recv_round1_msg_BN, private_key, public_mod, ctx);
@@ -207,7 +207,7 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 	if (num = write(fd, shared_secret_str, strlen(shared_secret_str)) == -1)
 		perror("write");
 	else
-		printf("sent the shared secret locally: wrote %d bytes\n", num);
+		printf("sent the shared secret locally: %s\n", shared_secret_str);
 	close(fd);
 
 	BN_clear(public_mod);

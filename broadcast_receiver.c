@@ -116,14 +116,14 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 
         printf("Received: %s\n", recv_msg);    /* Print the received string */
 		char** recv_msg_array = checkStr(recv_msg);
-		if(atoi(recv_msg_array[0]) == (id + 2) % 3 && atoi(recv_msg_array[1]) == 1) {
+		if(atoi(recv_msg_array[0]) == ((id + 2) % 3) && atoi(recv_msg_array[1]) == 1) {
 			fd = open(FIFO_NAME, O_WRONLY);
 			if ((num = write(fd, recv_msg_array[2], strlen(recv_msg_array[2]))) == -1)
 				perror("write");
 			else
-				printf("sent round 1 message locally - %d bytes\n", num);
+				printf("sent round 1 message locally - %s\n", recv_msg_array[2]);
 			close(fd);
-		} else if(atoi(recv_msg_array[0]) == (id + 1) % 3 && atoi(recv_msg_array[1]) == 2) {
+		} else if(atoi(recv_msg_array[0]) == ((id + 1) % 3) && atoi(recv_msg_array[1]) == 2) {
 			strcpy(round2_msg, recv_msg_array[2]);
 			printf("stored round2_msg: %s\n", round2_msg);
 		}
@@ -133,7 +133,7 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 	if (num = write(fd, round2_msg, strlen(round2_msg)) == -1)
 		perror("write");
 	else
-		printf("sent round2 message locally - %d bytes\n", num);
+		printf("sent round 2 message locally - %s\n", round2_msg);
 	close(fd);
 
 	// need to read symmetric key from server
