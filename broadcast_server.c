@@ -150,7 +150,9 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 
 	// open a named pipe and receive the needed message from the "client" running on this node
 	// e.g. on node 0, we need to receive a round 1 message from node 2
-	mkfifo(FIFO_NAME, 0666);
+	if(0 != access(FIFO_NAME, 0)) {
+		mkfifo(FIFO_NAME, 0666);
+	}
 	int fd = open(FIFO_NAME, O_RDONLY);
 	char* recv_round1_msg = (char*)calloc(KEY_SIZE, sizeof(char));
 	int num;

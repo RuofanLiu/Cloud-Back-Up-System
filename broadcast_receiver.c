@@ -109,6 +109,9 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 	char* recv_msg = (char*)calloc(KEY_SIZE+strlen("1 1 "), sizeof(char));
 	char* round2_msg = (char*)calloc(KEY_SIZE, sizeof(char));
 	int fd, num;
+	if(0 != access(FIFO_NAME, 0)) {
+		mkfifo(FIFO_NAME, 0666);
+	}
 	// should receive a total of 6 messages from the servers
 	for(int i = 0; i < 6; i++) {
         if ((num = recvfrom(sock, recv_msg, KEY_SIZE+strlen("1 1 "), 0, NULL, 0)) < 0)
