@@ -21,6 +21,7 @@
 #include <openssl/rand.h> /* for generating random numbers */
 
 #define FIFO_NAME "shared_data"
+#define KEY_SIZE 256
 
 /*
 	Supported Command:
@@ -133,7 +134,7 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 
 	// construct the message to broadcast: <id 1 public_key> (1 to denote round 1 of communication)
 	char* public_key_str = BN_bn2hex(public_key);
-	char* round1_msg = (char*)malloc(strlen(public_key_str)+strlen(id_str)+strlen(" 1 "));
+	char* round1_msg = (char*)malloc(KEY_SIZE+strlen(id_str)+strlen(" 1 "));
 	strcpy(round1_msg, id_str);
 	strcat(round1_msg, " 1 ");
 	strcat(round1_msg, public_key_str);
@@ -151,9 +152,9 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 	// e.g. on node 0, we need to receive a round 1 message from node 2
 	mkfifo(FIFO_NAME, 0666);
 	int fd = open(FIFO_NAME, O_RDONLY);
-	char* recv_round1_msg = (char*)calloc(256, sizeof(char));
+	char* recv_round1_msg = (char*)calloc(KEY_SIZE, sizeof(char));
 	int num;
-	if ((num = read(fd, recv_round1_msg, 256)) == -1)
+	if ((num = read(fd, recv_round1_msg, KEY_SIZE)) == -1)
             perror("read");
         else {
             printf("read round 1 message- %d bytes: \"%s\"\n", num, recv_round1_msg);
@@ -186,8 +187,8 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 	// open a named pipe and receive the needed message from the local client
 	// e.g. on node 0, we need to receive a round 2 message from node 1
 	fd = open(FIFO_NAME, O_RDONLY);
-	char* recv_round2_msg = (char*)calloc(256, sizeof(char));
-	if ((num = read(fd, recv_round2_msg, 256)) == -1)
+	char* recv_round2_msg = (char*)calloc(KEY_SIZE, sizeof(char));
+	if ((num = read(fd, recv_round2_msg, KEY_SIZE)) == -1)
             perror("read");
         else {
             printf("read round 2 message- %d bytes: \"%s\"\n", num, recv_round2_msg);

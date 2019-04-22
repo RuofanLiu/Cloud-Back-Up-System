@@ -18,6 +18,7 @@
 #define MAXRECVSTRING 255  /* Longest string to receive */
 #define MAXLOGSIZE 2
 #define FIFO_NAME "shared_data"
+#define KEY_SIZE 256
 
 int commandSize = 0;    //record the size of the cmdArray
 /*
@@ -105,13 +106,12 @@ char* receive_encrypted_msg(int sock, unsigned char* key) {
 }
 
 void generate_keys(int id, int sock, char* shared_secret_str) {
-	char* recv_msg = (char*)calloc(258, sizeof(char));
-	mkfifo(FIFO_NAME, 0666);
-	char* round2_msg = (char*)calloc(256, sizeof(char));
+	char* recv_msg = (char*)calloc(KEY_SIZE+strlen("1 1 "), sizeof(char));
+	char* round2_msg = (char*)calloc(KEY_SIZE, sizeof(char));
 	int fd, num;
 	// should receive a total of 6 messages from the servers
 	for(int i = 0; i < 6; i++) {
-        if ((num = recvfrom(sock, recv_msg, 258, 0, NULL, 0)) < 0)
+        if ((num = recvfrom(sock, recv_msg, KEY_SIZE+strlen("1 1 "), 0, NULL, 0)) < 0)
             perror("recvfrom() failed");
 
         printf("Received: %s\n", recv_msg);    /* Print the received string */
@@ -138,12 +138,13 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 
 	// need to read symmetric key from server
 	fd = open(FIFO_NAME, O_RDONLY);
-	if ((num = read(fd, shared_secret_str, 256)) == -1)
+	if ((num = read(fd, shared_secret_str, KEY_SIZE)) == -1)
             perror("read");
 	else {
 		printf("received shared secret - %d bytes: \"%s\"\n", num, shared_secret_str);
 	}
 	close(fd);
+	unlink(FIFO_NAME);
 }
 
 int main(int argc, char *argv[])
@@ -156,7 +157,7 @@ int main(int argc, char *argv[])
     struct logUnit log[MAXLOGSIZE];           /*a log to keep track of the information to stay consistant with other nodes*/
     int logSize = 0;
 	int id;
-	char* shared_secret_str = (char*)calloc(256, sizeof(char));
+	char* shared_secret_str = (char*)calloc(KEY_SIZE, sizeof(char));
 
     if (argc != 3)    /* Test for correct number of arguments */
     {
