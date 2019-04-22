@@ -7,7 +7,7 @@
 #include <unistd.h>     /* for close() */
 #include <ctype.h>
 #include <time.h>
-
+#include <pthread.h>
 /*
 	Supported Command:
 	1. ADD <filename>
@@ -39,6 +39,24 @@ char* toLowerCase(char* str){
 	return str;
 }
 
+/*
+	Create another thread for receiving message
+*/
+void *connection_handler(void * sock_dest){
+	int sock = *(int*)sock_dest;
+	char* buffer = (char*)calloc(1024, sizeof(char));
+	struct sockaddr_in from;
+	int length = sizeof(struct sockaddr_in);
+ 	int n = recvfrom(sock,buffer,4,0,(struct sockaddr *)&from, &length);
+	if (n < 0) {
+		perror("recvfrom");
+	}
+	else{
+		buffer[strlen(buffer)] = 0;
+		printf("Received %s from server\n", buffer);
+	}
+}
+
 int main(int argc, char *argv[])
 {
     int sock;                         /* Socket */
@@ -49,6 +67,7 @@ int main(int argc, char *argv[])
     int broadcastPermission;          /* Socket opt to set permission to broadcast */
     unsigned int sendStringLen;       /* Length of string to broadcast */
 	time_t t = time(0);
+	pthread_t recv_thread;
 
     if (argc < 3)                     /* Test for correct number of parameters */
     {
@@ -75,7 +94,11 @@ int main(int argc, char *argv[])
     broadcastAddr.sin_addr.s_addr = inet_addr(broadcastIP);/* Broadcast IP address */
     broadcastAddr.sin_port = htons(broadcastPort);         /* Broadcast port */
 
-    int length=sizeof(struct sockaddr_in);
+    int length = sizeof(struct sockaddr_in);
+    if(pthread_create(&recv_thread, NULL, connection_handler, (void*)&sock) < 0){
+    	perror("Failed to create a thread\n");
+    }
+
     printf("Starting UDP server for broadcasting\n");
     while(1) /* Run forever */
     {
@@ -124,16 +147,6 @@ int main(int argc, char *argv[])
 	     		
 	     	}
 
-	     	char* buffer = (char*)calloc(1024, sizeof(char));
-	     	int n = recvfrom(sock,buffer,4,0,(struct sockaddr *)&from, &length);
-
-   			if (n < 0) {
-   				perror("recvfrom");
-   			}
-   			else{
-   				buffer[strlen(buffer)] = 0;
-   				printf("Received %s from server\n", buffer);
-   			}
 	        sleep(1);   /* Avoids flooding the network */
      	}
      	else{

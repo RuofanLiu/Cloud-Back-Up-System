@@ -52,7 +52,7 @@ int checkExistence(char* filename){
 int main(int argc, char *argv[])
 {
     int sock;                         /* Socket */
-    struct sockaddr_in broadcastAddr, Sender_addr; /* Broadcast Address */
+    struct sockaddr_in broadcastAddr, from; /* Broadcast Address */
     unsigned short broadcastPort;     /* Port */
     char* recvString = (char*)calloc(1024, sizeof(char)); /* Buffer for received string */
     int recvStringLen;                /* Length of received string */
@@ -81,10 +81,10 @@ int main(int argc, char *argv[])
     if (bind(sock, (struct sockaddr *) &broadcastAddr, sizeof(broadcastAddr)) < 0)
         perror("bind() failed");
 
-    
-    //while(1){
+    int fromlen = sizeof(struct sockaddr_in);
+    while(1){
         /* Receive a single datagram from the server */
-        if ((recvStringLen = recvfrom(sock, recvString, MAXRECVSTRING, 0, NULL, 0)) < 0)
+        if ((recvStringLen = recvfrom(sock, recvString, MAXRECVSTRING, 0, (struct sockaddr *)&from, &fromlen)) < 0)
             perror("recvfrom() failed");
 
         recvString[recvStringLen] = '\n';
@@ -95,7 +95,6 @@ int main(int argc, char *argv[])
         fputs(recvString, fp);
         fclose(fp);
 
-        printf("%d\n", __LINE__);
         /*Create user log to guarantee data consistency*/
         struct logUnit lu;
         char** cmdArray = checkStr(recvString);
@@ -109,7 +108,6 @@ int main(int argc, char *argv[])
             strcat((lu.time), " ");
             strcat((lu.time), cmdArray[i]);
         }
-        printf("%d\n", __LINE__);
         /* if the command is add, add the content to the log as well*/
         if(strcmp(lu.command, "add") == 0){
             int contentSize = commandSize - 7;
@@ -120,7 +118,6 @@ int main(int argc, char *argv[])
                 strcat(lu.content, cmdArray[i]);
             }
         }
-        printf("%d\n", __LINE__);
         /*The log only keeps track of MAXLOGSIZE most recent logs*/
         if(logSize == MAXLOGSIZE){
             for(int i = 0; i < MAXLOGSIZE - 1; ++i){
@@ -152,15 +149,15 @@ int main(int argc, char *argv[])
                 printf("Target file does not exist\n");
             }
         }
-        int fromlen = sizeof(struct sockaddr_in);
-        int n = sendto(sock,"ACK",3, 0,(struct sockaddr *)&broadcastAddr,fromlen);
+        
+        int n = sendto(sock,"ACK",3, 0,(struct sockaddr *)&from,fromlen);
         if (n  < 0) {
             perror("sendto");
         }
         else{
             printf("Sent acknowledgement to server\n");
         }
-    //}
+    }
     close(sock);
     exit(0);
 }
