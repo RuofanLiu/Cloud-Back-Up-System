@@ -160,7 +160,6 @@ int main(int argc, char *argv[])
     int sock;                         /* Socket */
     struct sockaddr_in broadcastAddr, Sender_addr; /* Broadcast Address */
     unsigned short broadcastPort;     /* Port */
-    char* recvString = (char*)calloc(MAX_MSG_LEN+1, sizeof(char)); /* Buffer for received string */
     int recvStringLen;                /* Length of received string */
     struct logUnit log[MAX_LOG_SIZE];           /*a log to keep track of the information to stay consistant with other nodes*/
     int logSize = 0;
@@ -215,6 +214,7 @@ int main(int argc, char *argv[])
 
     while(1) {
         /* Receive a single datagram from the server */
+		char* recvString = (char*)calloc(MAX_MSG_LEN+1, sizeof(char)); /* Buffer for received string */
 		receive_and_decrypt_msg(sock, shared_secret_str, recvString);
 
 		recvStringLen = strlen(recvString);
@@ -283,6 +283,7 @@ int main(int argc, char *argv[])
                 printf("Target file does not exist\n");
             }
         }
+		free(recvString);
     }
     close(sock);
     exit(0);
