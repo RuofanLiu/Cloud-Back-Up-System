@@ -266,7 +266,9 @@ int main(int argc, char *argv[])
 	printf("press enter to start key generation\n");
 	getchar();
 	generate_keys(id_str, sock, broadcastAddr, shared_secret);
-	//send_encrypted_msg(sock, broadcastAddr, BN_bn2hex(shared_secret), "test");
+	printf("press enter to send a message\n");
+	getchar();
+	send_encrypted_msg(sock, broadcastAddr, BN_bn2hex(shared_secret), "test");
 
 	BN_clear(shared_secret);
 //    while(1) /* Run forever */
