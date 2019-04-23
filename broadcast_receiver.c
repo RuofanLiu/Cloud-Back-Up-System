@@ -229,6 +229,7 @@ int main(int argc, char *argv[])
         FILE* fp;
         fp = fopen("log.txt", "a+");
         fputs(recvString, fp);
+        fputs("\n", fp);
         fclose(fp);
 
         /*Create user log to guarantee data consistency*/
