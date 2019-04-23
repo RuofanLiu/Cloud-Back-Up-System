@@ -7,6 +7,7 @@
 #include <unistd.h>     /* for close() */
 #include <ctype.h>
 #include <time.h>
+#include <sys/time.h>
 
 #include <stdlib.h>
 #include <errno.h>
@@ -21,7 +22,14 @@
 #include <openssl/rand.h> /* for generating random numbers */
 
 #define FIFO_NAME "shared_data"
-#define KEY_SIZE 256
+#define MAX_CONTENT_LEN 2048
+#define MAX_FILENAME_LEN 64
+#define TIME_LEN 25
+#define COMMAND_LEN 3
+#define MAX_LOG_SIZE 2
+#define KEY_LEN 256
+#define IV_LEN 128
+#define MAX_MSG_LEN MAX_CONTENT_LEN+MAX_FILENAME_LEN+TIME_LEN+COMMAND_LEN  /* Longest string to receive */
 
 /*
 	Supported Command:
@@ -60,20 +68,20 @@ int encrypt(unsigned char *plaintext, int plaintext_len, unsigned char *key, uns
 	int ciphertext_len;
 
 	if(!(ctx = EVP_CIPHER_CTX_new())) {
-		perror("encryption failed");
+		perror("failed to create ctx");
 	}
 
 	if(1 != EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv)) {
-		perror("encryption failed");
+		perror("encryption init failed");
 	}
 
 	if(1 != EVP_EncryptUpdate(ctx, ciphertext, &len, plaintext, plaintext_len)) {
-		perror("encryption failed");
+		perror("encryption update failed");
 	}
 	ciphertext_len = len;
 
 	if(1 != EVP_EncryptFinal_ex(ctx, ciphertext + len, &len)) {
-		perror("encryption failed");
+		perror("encryption final failed");
 	}
 	ciphertext_len += len;
 
@@ -92,14 +100,23 @@ void send_encrypted_msg(int sock, struct sockaddr_in broadcastAddr, unsigned cha
 	else {
 		printf("Sending initialization vector: %s\n", iv_str);
 	}
-	char* encrypted_msg = (unsigned char*)calloc(1024, sizeof(char));
-	encrypt(msg, strlen(msg), key, iv_str, encrypted_msg);
-	if (sendto(sock, encrypted_msg, strlen(encrypted_msg), 0, (struct sockaddr *) 
-				&broadcastAddr, sizeof(broadcastAddr)) != strlen(encrypted_msg)){
+	char* encrypted_msg = (unsigned char*)calloc((strlen(msg)/128+1)*128, sizeof(char));
+
+	struct timeval  tv1, tv2;
+	gettimeofday(&tv1, NULL);
+
+	int encrypted_msg_len = encrypt(msg, strlen(msg), key, iv_str, encrypted_msg);
+
+	gettimeofday(&tv2, NULL);
+	printf("Time taken to encrypt message: %f milliseconds\n", (double) (tv2.tv_sec - tv1.tv_sec) *1000000 + (double) (tv2.tv_usec - tv1.tv_usec));
+
+	if (sendto(sock, encrypted_msg, encrypted_msg_len, 0, (struct sockaddr *) 
+				&broadcastAddr, sizeof(broadcastAddr)) != encrypted_msg_len) {
 		perror("sendto() sent a different number of bytes than expected");
 	}
 	else {
-		printf("broadcasting encrypted message: %s\n", iv_str);
+		printf("broadcasting encrypted message:\n");
+		BIO_dump_fp(stdout, encrypted_msg, encrypted_msg_len);
 	}
 	BN_clear(iv);
 }
@@ -134,7 +151,7 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 
 	// construct the message to broadcast: <id 1 public_key> (1 to denote round 1 of communication)
 	char* public_key_str = BN_bn2hex(public_key);
-	char* round1_msg = (char*)malloc(KEY_SIZE+strlen(id_str)+strlen(" 1 ")+1);
+	char* round1_msg = (char*)malloc(KEY_LEN+strlen(id_str)+strlen(" 1 ")+1);
 	strcpy(round1_msg, id_str);
 	strcat(round1_msg, " 1 ");
 	strcat(round1_msg, public_key_str);
@@ -154,9 +171,9 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 		mkfifo(FIFO_NAME, 0666);
 	}
 	int fd = open(FIFO_NAME, O_RDONLY);
-	char* recv_round1_msg = (char*)calloc(KEY_SIZE+1, sizeof(char));
+	char* recv_round1_msg = (char*)calloc(KEY_LEN+1, sizeof(char));
 	int num;
-	if ((num = read(fd, recv_round1_msg, KEY_SIZE+1)) == -1)
+	if ((num = read(fd, recv_round1_msg, KEY_LEN+1)) == -1)
             perror("read");
         else {
             printf("read round 1 message- %d bytes: \"%s\"\n", num, recv_round1_msg);
@@ -189,8 +206,8 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 	// open a named pipe and receive the needed message from the local client
 	// e.g. on node 0, we need to receive a round 2 message from node 1
 	fd = open(FIFO_NAME, O_RDONLY);
-	char* recv_round2_msg = (char*)calloc(KEY_SIZE+1, sizeof(char));
-	if ((num = read(fd, recv_round2_msg, KEY_SIZE+1)) == -1)
+	char* recv_round2_msg = (char*)calloc(KEY_LEN+1, sizeof(char));
+	if ((num = read(fd, recv_round2_msg, KEY_LEN+1)) == -1)
             perror("read");
         else {
             printf("read round 2 message- %d bytes: \"%s\"\n", num, recv_round2_msg);
@@ -237,7 +254,7 @@ int main(int argc, char *argv[])
 
     if (argc < 4)                     /* Test for correct number of parameters */
     {
-        fprintf(stderr,"Usage:  %s <IP Address> <Port> \n", argv[0]);
+        fprintf(stderr,"Usage:  %s <ID (0-2)> <IP Address> <Port> \n", argv[0]);
         exit(1);
     }
 
@@ -265,63 +282,61 @@ int main(int argc, char *argv[])
 
 	printf("press enter to start key generation\n");
 	getchar();
-	generate_keys(id_str, sock, broadcastAddr, shared_secret);
-	printf("press enter to send a message\n");
-	getchar();
-	send_encrypted_msg(sock, broadcastAddr, BN_bn2hex(shared_secret), "test");
 
-	BN_clear(shared_secret);
-//    while(1) /* Run forever */
-//    {
-//    	/*take input command*/
-//    	printf("Type in a valid command (add/rm <filename>) \n");
-//		fgets(sendString, 1024, stdin);
-//		char* command = (char*)malloc(1024*sizeof(char));
-//		strcpy(command, sendString);
-//		command[strlen(command) - 1] = 0;
-//		char** cmdArray = checkStr(sendString);
-//		if((strcmp(toLowerCase(cmdArray[0]), "add") == 0 && cmdArray[1] != NULL && cmdArray[1] != "\n")|| 
-//			(strcmp(toLowerCase(cmdArray[0]), "rm") == 0 && cmdArray[1] != NULL && cmdArray[1] != "\n")){
-//         /* Broadcast sendString in datagram to clients every 3 seconds*/
-//			/*i the command is "add", retrieve the content and write to file*/
-//			char* msgToSend = (char*)calloc(1024, sizeof(char));
-//			char* timeStamp = (char*)calloc(1024, sizeof(char));
-//			/*
-//				The message to be sent will have the following format
-//				<command> <filename> <timestamp> (<content>)
-//			*/
-//			sprintf(timeStamp, "%-24.24s", ctime(&t));
-//			strcat(msgToSend, command);
-//			strcat(msgToSend, " ");
-//			strcat(msgToSend, timeStamp);
-//
-//			cmdArray[1][strlen(cmdArray[1]) - 1] = 0;	//remove the newline character caused by fgets
-//			if(strcmp(toLowerCase(cmdArray[0]), "add") == 0){
-//				printf("Please enter the content of the file\n");
-//				char* content = (char*)malloc(1024*sizeof(char));
-//				fgets(content, 1024, stdin);
-//				content[strlen(content) - 1] = 0;	//remove the newline character in the content
-//				strcat(msgToSend, " ");
-//				strcat(msgToSend, content);
-//			}
-//
-//			sendStringLen = strlen(msgToSend);
-//			msgToSend[sendStringLen] = 0;
-//
-//
-//	        if (sendto(sock, msgToSend, sendStringLen, 0, (struct sockaddr *) 
-//	               &broadcastAddr, sizeof(broadcastAddr)) != sendStringLen){
-//	             perror("sendto() sent a different number of bytes than expected");
-//	     	}
-//	     	else{
-//	     		printf("Sending message to all clients: %s\n", msgToSend);
-//	     	}
-//
-//	        sleep(1);   /* Avoids flooding the network */
-//     	}
-//     	else{
-//     		printf("Command not found.\nUsage: add/rm <filename>\n");
-//     	}
-//    }
+	struct timeval  tv1, tv2;
+	gettimeofday(&tv1, NULL);
+
+	generate_keys(id_str, sock, broadcastAddr, shared_secret);
+
+	gettimeofday(&tv2, NULL);
+	printf("Time taken to generate keys: %f milliseconds\n", (double) (tv2.tv_sec - tv1.tv_sec) *1000000 + (double) (tv2.tv_usec - tv1.tv_usec));
+
+	unsigned char* shared_secret_str = BN_bn2hex(shared_secret);
+
+    while(1) /* Run forever */
+    {
+    	/*take input command*/
+    	printf("Type in a valid command (add/rm <filename>) \n");
+		fgets(sendString, COMMAND_LEN+MAX_FILENAME_LEN, stdin);
+		char* command = (char*)calloc(COMMAND_LEN+MAX_FILENAME_LEN+1,sizeof(char));
+		strcpy(command, sendString);
+		command[strlen(command) - 1] = 0;
+		char** cmdArray = checkStr(sendString);
+		if((strcmp(toLowerCase(cmdArray[0]), "add") == 0 && cmdArray[1] != NULL && cmdArray[1] != "\n")|| 
+			(strcmp(toLowerCase(cmdArray[0]), "rm") == 0 && cmdArray[1] != NULL && cmdArray[1] != "\n")){
+         /* Broadcast sendString in datagram to clients every 3 seconds*/
+			/*i the command is "add", retrieve the content and write to file*/
+			char* msgToSend = (char*)calloc(MAX_MSG_LEN, sizeof(char));
+			char* timeStamp = (char*)calloc(TIME_LEN+1, sizeof(char));
+			/*
+				The message to be sent will have the following format
+				<command> <filename> <timestamp> (<content>)
+			*/
+			sprintf(timeStamp, "%-24.24s", ctime(&t));
+			strcat(msgToSend, command);
+			strcat(msgToSend, " ");
+			strcat(msgToSend, timeStamp);
+
+			cmdArray[1][strlen(cmdArray[1]) - 1] = 0;	//remove the newline character caused by fgets
+			if(strcmp(toLowerCase(cmdArray[0]), "add") == 0){
+				printf("Please enter the content of the file\n");
+				char* content = (char*)calloc(MAX_MSG_LEN,sizeof(char));
+				fgets(content, MAX_MSG_LEN, stdin);
+				content[strlen(content) - 1] = '\0';	//remove the newline character in the content
+				strcat(msgToSend, " ");
+				strcat(msgToSend, content);
+			}
+
+			sendStringLen = strlen(msgToSend);
+			msgToSend[sendStringLen] = 0;
+
+			send_encrypted_msg(sock, broadcastAddr, shared_secret_str, msgToSend);
+
+	        sleep(1);   /* Avoids flooding the network */
+     	}
+     	else{
+     		printf("Command not found.\nUsage: add/rm <filename>\n");
+     	}
+    }
     /* NOT REACHED */
 }
