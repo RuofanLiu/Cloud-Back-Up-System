@@ -17,7 +17,7 @@
 #include <openssl/err.h>
 
 #define FIFO_NAME "shared_data"
-#define MAX_CONTENT_LEN 2048
+#define MAX_CONTENT_LEN 100000
 #define MAX_FILENAME_LEN 64
 #define TIME_LEN 25
 #define COMMAND_LEN 3
@@ -125,9 +125,6 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 	char* recv_msg = (char*)calloc(KEY_LEN+strlen("1 1 ")+1, sizeof(char));
 	char* round2_msg = (char*)calloc(KEY_LEN+1, sizeof(char));
 	int fd, num;
-	if(0 != access(FIFO_NAME, 0)) {
-		mkfifo(FIFO_NAME, 0666);
-	}
 	// should receive a total of 6 messages from the servers
 	for(int i = 0; i < 6; i++) {
         if ((num = recvfrom(sock, recv_msg, KEY_LEN+strlen("1 1 ")+1, 0, NULL, 0)) < 0)
@@ -139,8 +136,6 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 			fd = open(FIFO_NAME, O_WRONLY);
 			if ((num = write(fd, recv_msg_array[2], strlen(recv_msg_array[2]))) == -1)
 				perror("write");
-			else
-				printf("sent round 1 message locally - %s\n", recv_msg_array[2]);
 			close(fd);
 		} else if(atoi(recv_msg_array[0]) == ((id + 2) % 3) && atoi(recv_msg_array[1]) == 2) {
 			strcpy(round2_msg, recv_msg_array[2]);
@@ -150,17 +145,12 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 	fd = open(FIFO_NAME, O_WRONLY);
 	if (num = write(fd, round2_msg, strlen(round2_msg)) == -1)
 		perror("write");
-	else
-		printf("sent round 2 message locally - %s\n", round2_msg);
 	close(fd);
 
 	// need to read symmetric key from server
 	fd = open(FIFO_NAME, O_RDONLY);
 	if ((num = read(fd, shared_secret_str, KEY_LEN+1)) == -1)
             perror("read");
-	else {
-		printf("received shared secret - %d bytes: \"%s\"\n", num, shared_secret_str);
-	}
 	close(fd);
 	unlink(FIFO_NAME);
 }
@@ -199,6 +189,21 @@ int main(int argc, char *argv[])
     /* Bind to the broadcast port */
     if (bind(sock, (struct sockaddr *) &broadcastAddr, sizeof(broadcastAddr)) < 0)
         perror("bind() failed");
+
+	char* gen = calloc(COMMAND_LEN+1, sizeof(char));
+	int num;
+	if ((num = recvfrom(sock, gen, COMMAND_LEN+1, 0, NULL, 0)) < 0)
+		perror("recvfrom() failed");
+    printf("Received generation command\n");
+
+	// open named pipe to share generation command
+	if(0 != access(FIFO_NAME, 0)) {
+		mkfifo(FIFO_NAME, 0666);
+	}
+	int fd = open(FIFO_NAME, O_WRONLY);
+	if (num = write(fd, "gen", strlen("gen")) == -1)
+		perror("write");
+	close(fd);
 
 	struct timeval  tv1, tv2;
 	gettimeofday(&tv1, NULL);

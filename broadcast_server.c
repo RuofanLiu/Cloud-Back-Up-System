@@ -22,7 +22,7 @@
 #include <openssl/rand.h> /* for generating random numbers */
 
 #define FIFO_NAME "shared_data"
-#define MAX_CONTENT_LEN 2048
+#define MAX_CONTENT_LEN 100000
 #define MAX_FILENAME_LEN 64
 #define TIME_LEN 25
 #define COMMAND_LEN 3
@@ -167,17 +167,11 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 
 	// open a named pipe and receive the needed message from the "client" running on this node
 	// e.g. on node 0, we need to receive a round 1 message from node 2
-	if(0 != access(FIFO_NAME, 0)) {
-		mkfifo(FIFO_NAME, 0666);
-	}
 	int fd = open(FIFO_NAME, O_RDONLY);
 	char* recv_round1_msg = (char*)calloc(KEY_LEN+1, sizeof(char));
 	int num;
 	if ((num = read(fd, recv_round1_msg, KEY_LEN+1)) == -1)
             perror("read");
-        else {
-            printf("read round 1 message- %d bytes: \"%s\"\n", num, recv_round1_msg);
-    }
 	close(fd);
 
 	// the following will compute g^(priv0)(priv2), if we are at node 0
@@ -209,9 +203,6 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 	char* recv_round2_msg = (char*)calloc(KEY_LEN+1, sizeof(char));
 	if ((num = read(fd, recv_round2_msg, KEY_LEN+1)) == -1)
             perror("read");
-        else {
-            printf("read round 2 message- %d bytes: \"%s\"\n", num, recv_round2_msg);
-    }
 	close(fd);
 
 	// calculate g^(priv0)(priv1)(priv2), i.e. the shared secret
@@ -225,8 +216,6 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 	fd = open(FIFO_NAME, O_WRONLY);
 	if (num = write(fd, shared_secret_str, strlen(shared_secret_str)) == -1)
 		perror("write");
-	else
-		printf("sent the shared secret locally: %s\n", shared_secret_str);
 	close(fd);
 
 	BN_clear(public_mod);
@@ -280,8 +269,28 @@ int main(int argc, char *argv[])
 
     printf("Starting UDP server for broadcasting\n");
 
-	printf("press enter to start key generation\n");
-	getchar();
+	if(strcmp(id_str, "0") == 0) {
+		printf("press enter to start key generation\n");
+		getchar();
+
+		if (sendto(sock, "gen", strlen("gen"), 0, (struct sockaddr *) 
+					&broadcastAddr, sizeof(broadcastAddr)) != strlen("gen")){
+			perror("sendto() sent a different number of bytes than expected");
+		}
+		else {
+			printf("Sending generation command\n");
+		}
+	}
+	// open named pipe to receive generation command from client
+	if(0 != access(FIFO_NAME, 0)) {
+		mkfifo(FIFO_NAME, 0666);
+	}
+	int fd = open(FIFO_NAME, O_RDONLY);
+	char* recv_gen = (char*)calloc(COMMAND_LEN+1, sizeof(char));
+	int num;
+	if ((num = read(fd, recv_gen, COMMAND_LEN+1)) == -1)
+		perror("read");
+	close(fd);
 
 	struct timeval  tv1, tv2;
 	gettimeofday(&tv1, NULL);
