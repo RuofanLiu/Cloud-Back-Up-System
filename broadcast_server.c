@@ -156,7 +156,7 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 	int fd = open(FIFO_NAME, O_RDONLY);
 	char* recv_round1_msg = (char*)calloc(KEY_SIZE+1, sizeof(char));
 	int num;
-	if ((num = read(fd, recv_round1_msg, KEY_SIZE)) == -1)
+	if ((num = read(fd, recv_round1_msg, KEY_SIZE+1)) == -1)
             perror("read");
         else {
             printf("read round 1 message- %d bytes: \"%s\"\n", num, recv_round1_msg);

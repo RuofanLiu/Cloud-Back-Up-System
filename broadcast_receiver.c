@@ -126,7 +126,7 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 			else
 				printf("sent round 1 message locally - %s\n", recv_msg_array[2]);
 			close(fd);
-		} else if(atoi(recv_msg_array[0]) == ((id + 1) % 3) && atoi(recv_msg_array[1]) == 2) {
+		} else if(atoi(recv_msg_array[0]) == ((id + 2) % 3) && atoi(recv_msg_array[1]) == 2) {
 			strcpy(round2_msg, recv_msg_array[2]);
 			printf("stored round2_msg: %s\n", round2_msg);
 		}
@@ -141,7 +141,7 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 
 	// need to read symmetric key from server
 	fd = open(FIFO_NAME, O_RDONLY);
-	if ((num = read(fd, shared_secret_str, KEY_SIZE)) == -1)
+	if ((num = read(fd, shared_secret_str, KEY_SIZE+1)) == -1)
             perror("read");
 	else {
 		printf("received shared secret - %d bytes: \"%s\"\n", num, shared_secret_str);
@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
     struct logUnit log[MAXLOGSIZE];           /*a log to keep track of the information to stay consistant with other nodes*/
     int logSize = 0;
 	int id;
-	char* shared_secret_str = (char*)calloc(KEY_SIZE, sizeof(char));
+	char* shared_secret_str = (char*)calloc(KEY_SIZE+1, sizeof(char));
 
     if (argc != 3)    /* Test for correct number of arguments */
     {
