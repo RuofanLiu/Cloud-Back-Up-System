@@ -108,7 +108,7 @@ void send_encrypted_msg(int sock, struct sockaddr_in broadcastAddr, unsigned cha
 	int encrypted_msg_len = encrypt(msg, strlen(msg), key, iv_str, encrypted_msg);
 
 	gettimeofday(&tv2, NULL);
-	printf("Time taken to encrypt message: %f milliseconds\n", (double) (tv2.tv_sec - tv1.tv_sec) *1000000 + (double) (tv2.tv_usec - tv1.tv_usec));
+	printf("Time taken to encrypt message: %f microseconds\n", (double) (tv2.tv_sec - tv1.tv_sec) *1000000 + (double) (tv2.tv_usec - tv1.tv_usec));
 
 	if (sendto(sock, encrypted_msg, encrypted_msg_len, 0, (struct sockaddr *) 
 				&broadcastAddr, sizeof(broadcastAddr)) != encrypted_msg_len) {
@@ -118,6 +118,7 @@ void send_encrypted_msg(int sock, struct sockaddr_in broadcastAddr, unsigned cha
 		printf("broadcasting encrypted message:\n");
 		BIO_dump_fp(stdout, encrypted_msg, encrypted_msg_len);
 	}
+	free(encrypted_msg);
 	BN_clear(iv);
 }
 
@@ -218,6 +219,8 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 		perror("write");
 	close(fd);
 
+	free(recv_round1_msg);
+	free(recv_round2_msg);
 	BN_clear(public_mod);
 	BN_clear(private_key);
 	BN_clear(public_key);
@@ -291,6 +294,7 @@ int main(int argc, char *argv[])
 	if ((num = read(fd, recv_gen, COMMAND_LEN+1)) == -1)
 		perror("read");
 	close(fd);
+	free(recv_gen);
 
 	struct timeval  tv1, tv2;
 	gettimeofday(&tv1, NULL);
@@ -298,7 +302,7 @@ int main(int argc, char *argv[])
 	generate_keys(id_str, sock, broadcastAddr, shared_secret);
 
 	gettimeofday(&tv2, NULL);
-	printf("Time taken to generate keys: %f milliseconds\n", (double) (tv2.tv_sec - tv1.tv_sec) *1000000 + (double) (tv2.tv_usec - tv1.tv_usec));
+	printf("Time taken to generate keys: %f microseconds\n", (double) (tv2.tv_sec - tv1.tv_sec) *1000000 + (double) (tv2.tv_usec - tv1.tv_usec));
 
 	unsigned char* shared_secret_str = BN_bn2hex(shared_secret);
 

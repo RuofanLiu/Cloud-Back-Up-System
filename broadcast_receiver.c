@@ -41,7 +41,7 @@ struct logUnit{
 This function splits the command by whitespace and return them as an array
 */
 char** checkStr(char* command){
-    char** rst = (char**)malloc(1024*sizeof(char*));
+    char** rst = (char**)calloc(1024, sizeof(char*));
     char *p = strtok(command, " \n");
     int i = 0;
     while (p != NULL)
@@ -113,10 +113,11 @@ void receive_and_decrypt_msg(int sock, unsigned char* key, char* recv_msg) {
 	struct timeval  tv1, tv2;
 	gettimeofday(&tv1, NULL);
 
-	decrypt(encrypted_msg, encrypted_msg_len, key, iv_str, recv_msg);
+	int len = decrypt(encrypted_msg, encrypted_msg_len, key, iv_str, recv_msg);
+	recv_msg[len] = '\0';
 
 	gettimeofday(&tv2, NULL);
-	printf("Time taken to decrypt message: %f milliseconds\n", (double) (tv2.tv_sec - tv1.tv_sec) *1000000 + (double) (tv2.tv_usec - tv1.tv_usec));
+	printf("Time taken to decrypt message: %f microseconds\n", (double) (tv2.tv_sec - tv1.tv_sec) *1000000 + (double) (tv2.tv_usec - tv1.tv_usec));
 
 	printf("decrypted as: %s\n", recv_msg);
 }
@@ -140,6 +141,7 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 		} else if(atoi(recv_msg_array[0]) == ((id + 2) % 3) && atoi(recv_msg_array[1]) == 2) {
 			strcpy(round2_msg, recv_msg_array[2]);
 		}
+		free(recv_msg_array);
 	}
 	// once all 6 messages have been received, we know for sure round 1 is over
 	fd = open(FIFO_NAME, O_WRONLY);
@@ -153,6 +155,8 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
             perror("read");
 	close(fd);
 	unlink(FIFO_NAME);
+	free(recv_msg);
+	free(round2_msg);
 }
 
 int main(int argc, char *argv[])
@@ -194,6 +198,7 @@ int main(int argc, char *argv[])
 	if ((num = recvfrom(sock, gen, COMMAND_LEN+1, 0, NULL, 0)) < 0)
 		perror("recvfrom() failed");
     printf("Received generation command\n");
+	free(gen);
 
 	// open named pipe to share generation command
 	if(0 != access(FIFO_NAME, 0)) {
@@ -210,7 +215,7 @@ int main(int argc, char *argv[])
 	generate_keys(id, sock, shared_secret_str);
 
 	gettimeofday(&tv2, NULL);
-	printf("Time taken to generate keys: %f milliseconds\n", (double) (tv2.tv_sec - tv1.tv_sec) *1000000 + (double) (tv2.tv_usec - tv1.tv_usec));
+	printf("Time taken to generate keys: %f microseconds\n", (double) (tv2.tv_sec - tv1.tv_sec) *1000000 + (double) (tv2.tv_usec - tv1.tv_usec));
 
     while(1) {
         /* Receive a single datagram from the server */
@@ -243,7 +248,6 @@ int main(int argc, char *argv[])
         /* if the command is add, add the content to the log as well*/
         lu.content = (char*)calloc(MAX_CONTENT_LEN+1, sizeof(char));
         if(strcmp(lu.command, "add") == 0){
-            lu.content = (char*)calloc(MAX_CONTENT_LEN+1, sizeof(char));
             strcpy((lu.content), cmdArray[7]);
             for(int i = 8; i < commandSize; ++i){
                 strcat(lu.content, " ");
@@ -283,7 +287,12 @@ int main(int argc, char *argv[])
                 printf("Target file does not exist\n");
             }
         }
+		free(lu.command);
+		free(lu.filename);
+		free(lu.time);
+		free(lu.content);
 		free(recvString);
+		free(cmdArray);
     }
     close(sock);
     exit(0);
