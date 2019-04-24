@@ -1,10 +1,9 @@
-// from: http://cs.ecs.baylor.edu/~donahoo/practical/CSockets/code/BroadcastSender.c
-#include <stdio.h>      /* for printf() and fprintf() */
-#include <sys/socket.h> /* for socket() and bind() */
-#include <arpa/inet.h>  /* for sockaddr_in */
-#include <stdlib.h>     /* for atoi() and exit() */
-#include <string.h>     /* for memset() */
-#include <unistd.h>     /* for close() */
+#include <stdio.h>      
+#include <sys/socket.h> 
+#include <arpa/inet.h>  
+#include <stdlib.h>     
+#include <string.h>     
+#include <unistd.h>     
 #include <ctype.h>
 #include <time.h>
 #include <sys/time.h>
@@ -232,13 +231,13 @@ void generate_keys(char* id_str, int sock, struct sockaddr_in broadcastAddr, BIG
 
 int main(int argc, char *argv[])
 {
-    int sock;                         /* Socket */
-    struct sockaddr_in broadcastAddr; /* Broadcast address */
-    char *broadcastIP;                /* IP broadcast address */
-    unsigned short broadcastPort;     /* Server port */
-    char *sendString = (char*)malloc(1024*sizeof(char));                 /* String to broadcast */
-    int broadcastPermission;          /* Socket opt to set permission to broadcast */
-    unsigned int sendStringLen;       /* Length of string to broadcast */
+    int sock;                         
+    struct sockaddr_in broadcastAddr; 
+    char *broadcastIP;                
+    unsigned short broadcastPort;     
+    char *sendString = (char*)malloc(1024*sizeof(char));                 
+    int broadcastPermission;          
+    unsigned int sendStringLen;       
 	time_t t = time(0);
 	char* id_str = (char*)malloc(16);
 	RAND_poll();					  /* seed the RNG */
@@ -251,24 +250,24 @@ int main(int argc, char *argv[])
     }
 
 	id_str = argv[1];
-    broadcastIP = argv[2];            /* First arg:  broadcast IP address */ 
-    broadcastPort = atoi(argv[3]);    /* Second arg:  broadcast port */
+    broadcastIP = argv[2];            /* Second arg:  broadcast IP address */ 
+    broadcastPort = atoi(argv[3]);    /* Third arg:  broadcast port */
 
     /* Create socket for sending/receiving datagrams */
     if ((sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
         perror("socket() failed");
 
-    /* Set socket to allow broadcast */
+    /* Set socket to allow broadcasting */
     broadcastPermission = 1;
     if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, (void *) &broadcastPermission, 
           sizeof(broadcastPermission)) < 0)
         perror("setsockopt() failed");
 
     /* Construct local address structure */
-    memset(&broadcastAddr, 0, sizeof(broadcastAddr));   /* Zero out structure */
-    broadcastAddr.sin_family = AF_INET;                 /* Internet address family */
-    broadcastAddr.sin_addr.s_addr = inet_addr(broadcastIP);/* Broadcast IP address */
-    broadcastAddr.sin_port = htons(broadcastPort);         /* Broadcast port */
+    memset(&broadcastAddr, 0, sizeof(broadcastAddr));   
+    broadcastAddr.sin_family = AF_INET;                 
+    broadcastAddr.sin_addr.s_addr = inet_addr(broadcastIP);
+    broadcastAddr.sin_port = htons(broadcastPort);         
 
     printf("Starting UDP server for broadcasting\n");
 
@@ -317,7 +316,7 @@ int main(int argc, char *argv[])
 		char** cmdArray = checkStr(sendString);
 		if((strcmp(toLowerCase(cmdArray[0]), "add") == 0 && cmdArray[1] != NULL && cmdArray[1] != "\n")|| 
 			(strcmp(toLowerCase(cmdArray[0]), "rm") == 0 && cmdArray[1] != NULL && cmdArray[1] != "\n")){
-         /* Broadcast sendString in datagram to clients every 3 seconds*/
+         /* Broadcast sendString in datagram to clients every 1 second to avoid network flooding*/
 			/*i the command is "add", retrieve the content and write to file*/
 			char* msgToSend = (char*)calloc(MAX_MSG_LEN, sizeof(char));
 			char* timeStamp = (char*)calloc(TIME_LEN+1, sizeof(char));
@@ -345,11 +344,10 @@ int main(int argc, char *argv[])
 
 			send_encrypted_msg(sock, broadcastAddr, shared_secret_str, msgToSend);
 
-	        sleep(1);   /* Avoids flooding the network */
+	        sleep(1);   
      	}
      	else{
      		printf("Command not found.\nUsage: add/rm <filename>\n");
      	}
     }
-    /* NOT REACHED */
 }
