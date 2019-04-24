@@ -1,10 +1,9 @@
-// from: http://cs.ecs.baylor.edu/~donahoo/practical/CSockets/code/BroadcastReceiver.c
-#include <stdio.h>      /* for printf() and fprintf() */
-#include <sys/socket.h> /* for socket(), connect(), sendto(), and recvfrom() */
-#include <arpa/inet.h>  /* for sockaddr_in and inet_addr() */
-#include <stdlib.h>     /* for atoi() and exit() */
-#include <string.h>     /* for memset() */
-#include <unistd.h>     /* for close() */
+#include <stdio.h>      
+#include <sys/socket.h> 
+#include <arpa/inet.h>  
+#include <stdlib.h>     
+#include <string.h>     
+#include <unistd.h>     
 #include <sys/time.h>
 
 #include <errno.h>
@@ -26,7 +25,7 @@
 #define IV_LEN 128
 #define MAX_MSG_LEN MAX_CONTENT_LEN+MAX_FILENAME_LEN+TIME_LEN+COMMAND_LEN  /* Longest string to receive */
 
-int commandSize = 0;    //record the size of the cmdArray
+int commandSize = 0;    /*records the size of the cmdArray*/
 /*
     This is a structure that represents a single unit of the og.
 */
@@ -161,9 +160,9 @@ void generate_keys(int id, int sock, char* shared_secret_str) {
 
 int main(int argc, char *argv[])
 {
-    int sock;                         /* Socket */
-    struct sockaddr_in broadcastAddr, Sender_addr; /* Broadcast Address */
-    unsigned short broadcastPort;     /* Port */
+    int sock;                         
+    struct sockaddr_in broadcastAddr, Sender_addr; 
+    unsigned short broadcastPort;     
     int recvStringLen;                /* Length of received string */
     struct logUnit log[MAX_LOG_SIZE];           /*a log to keep track of the information to stay consistant with other nodes*/
     int logSize = 0;
@@ -184,10 +183,10 @@ int main(int argc, char *argv[])
         perror("socket() failed");
 
     /* Construct bind structure */
-    memset(&broadcastAddr, 0, sizeof(broadcastAddr));   /* Zero out structure */
-    broadcastAddr.sin_family = AF_INET;                 /* Internet address family */
-    broadcastAddr.sin_addr.s_addr = htonl(INADDR_ANY);  /* Any incoming interface */
-    broadcastAddr.sin_port = htons(broadcastPort);      /* Broadcast port */
+    memset(&broadcastAddr, 0, sizeof(broadcastAddr));   
+    broadcastAddr.sin_family = AF_INET;                 
+    broadcastAddr.sin_addr.s_addr = htonl(INADDR_ANY);  
+    broadcastAddr.sin_port = htons(broadcastPort);      
 
     /* Bind to the broadcast port */
     if (bind(sock, (struct sockaddr *) &broadcastAddr, sizeof(broadcastAddr)) < 0)
